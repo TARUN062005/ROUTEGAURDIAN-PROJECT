@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Loader2, X, ArrowUpDown, Anchor, Plane, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +9,6 @@ const BASE_URL    = import.meta.env.VITE_BACKEND_URL || '';
 const LABELS = {
   ship:  { from: 'Port of origin',      to: 'Destination port'     },
   air:   { from: 'Departure airport',   to: 'Arrival airport'      },
-  rail:  { from: 'Origin terminal',     to: 'Destination terminal' },
   truck: { from: 'Pickup location',     to: 'Delivery location'    },
 };
 
@@ -232,9 +231,11 @@ export const ShipmentCreationFlow = ({
   const labels   = LABELS[freightMode] || LABELS.truck;
   const needsRes = freightMode === 'ship' || freightMode === 'air';
 
+  const abortControllers = useRef({ source: null, dest: null });
+
   // ── Per-slot state ────────────────────────────────────────────────────────
   // slotState[slot] = null | { status: 'resolving'|'picking'|'confirmed', options:[], originalName:'', chosen: locObj }
-  const mkSlot = () => ({ query: '', results: [], searching: false, selected: null, slotState: null });
+  const mkSlot = () => ({ query: '', results: [], searching: false, selected: null, slotState: null, error: null });
 
   const [src, setSrc] = useState(mkSlot());
   const [dst, setDst] = useState(mkSlot());
@@ -263,44 +264,93 @@ export const ShipmentCreationFlow = ({
     return () => document.removeEventListener('click', h);
   }, []);
 
-  // ── Fire route when both sides are confirmed ──────────────────────────────
   useEffect(() => {
-    const ready = (slot) => {
-      if (!needsRes) return slot.selected;
-      return slot.slotState?.status === 'confirmed' && slot.slotState?.chosen;
-    };
-    if (ready(src) && ready(dst)) {
-      const srcLoc = needsRes ? src.slotState.chosen : src.selected;
-      const dstLoc = needsRes ? dst.slotState.chosen : dst.selected;
-      onLocationSelect(srcLoc, dstLoc);
-    }
-  }, [src.selected, src.slotState, dst.selected, dst.slotState, needsRes]);
+    searchCache.clear();
+    setSrc(mkSlot());
+    setDst(mkSlot());
+    setActiveDropdown(null);
+    onClearRoute?.();
+  }, [freightMode, onClearRoute]);
+
+  const ready = (slot) => {
+    if (!needsRes) return slot.selected;
+    return slot.slotState?.status === 'confirmed' && slot.slotState?.chosen;
+  };
+
+  const isSearchDisabled = !(ready(src) && ready(dst));
+
+  const handleSearchRoute = () => {
+    if (isSearchDisabled) return;
+    const srcLoc = needsRes ? src.slotState.chosen : src.selected;
+    const dstLoc = needsRes ? dst.slotState.chosen : dst.selected;
+    onLocationSelect(srcLoc, dstLoc);
+  };
 
   // ── Location search fetch ─────────────────────────────────────────────────
+  const filterResultsByMode = (data) => {
+    if (freightMode === 'ship') return data.filter(loc => loc._isPort);
+    if (freightMode === 'air') return data.filter(loc => loc._isAirport);
+    return data;
+  };
+
   const fetchLocations = async (query, which) => {
-    const key = query.trim().toLowerCase();
-    if (key.length < 2) { setSlot(which, { results: [] }); return; }
-    if (searchCache.has(key)) { setSlot(which, { results: searchCache.get(key) }); return; }
+    const modeKey = freightMode === 'ship' ? 'sea' : freightMode === 'truck' ? 'road' : freightMode;
+    const trimmed = query.trim().toLowerCase();
+    const key = `${modeKey}:${trimmed}`;
+    
+    // Minimum 3 characters
+    if (trimmed.length < 3) { 
+      setSlot(which, { results: [] }); 
+      return; 
+    }
+    
+    if (searchCache.has(key)) { 
+      const data = searchCache.get(key);
+      setSlot(which, { results: data }); 
+      console.log(`[SEARCH]\nquery=${query}\nresults=${data.map(r => r.display_name).join(' | ')}`);
+      return; 
+    }
+
+    // Cancel previous search for this input slot
+    if (abortControllers.current[which]) {
+      abortControllers.current[which].abort();
+    }
+    abortControllers.current[which] = new AbortController();
+
     setSlot(which, { searching: true });
     try {
-      const res  = await axios.get(`${BASE_URL}/api/ai/search`, { params: { q: query, limit: 6 }, timeout: 6000 });
-      const data = res.data || [];
+      const res  = await axios.get(`${BASE_URL}/api/ai/search`, {
+        params: { q: query, limit: 6, mode: modeKey },
+        timeout: 6000,
+        signal: abortControllers.current[which].signal,
+      });
+      const data = filterResultsByMode(res.data || []);
       if (data.length > 0) searchCache.set(key, data);
+      
+      console.log(`[SEARCH]\nquery=${query}\nresults=${data.map(r => r.display_name).join(' | ')}`);
+
       setSlot(which, { results: data, searching: false });
-    } catch { setSlot(which, { results: [], searching: false }); }
+    } catch (err) {
+      if (axios.isCancel(err)) {
+        return; // ignore cancelled request
+      }
+      setSlot(which, { results: [], searching: false });
+    }
   };
 
   useEffect(() => {
     const slot = src;
     if (activeDropdown !== 'source' || slot.selected || slot.slotState?.status === 'picking') return;
-    const t = setTimeout(() => fetchLocations(slot.query, 'source'), 220);
+    // 300ms debounce
+    const t = setTimeout(() => fetchLocations(slot.query, 'source'), 300);
     return () => clearTimeout(t);
   }, [src.query, activeDropdown, src.selected, src.slotState]);
 
   useEffect(() => {
     const slot = dst;
     if (activeDropdown !== 'dest' || slot.selected || slot.slotState?.status === 'picking') return;
-    const t = setTimeout(() => fetchLocations(slot.query, 'dest'), 220);
+    // 300ms debounce
+    const t = setTimeout(() => fetchLocations(slot.query, 'dest'), 300);
     return () => clearTimeout(t);
   }, [dst.query, activeDropdown, dst.selected, dst.slotState]);
 
@@ -340,9 +390,21 @@ export const ShipmentCreationFlow = ({
 
   // ── Select handlers ───────────────────────────────────────────────────────
   const handleSelect = (loc, which) => {
+    if (freightMode === 'ship' && !loc._isPort) {
+      setSlot(which, { error: 'Select a seaport for maritime routes.', results: [] });
+      return;
+    }
+    if (freightMode === 'air' && !loc._isAirport) {
+      setSlot(which, { error: 'Select an airport for air routes.', results: [] });
+      return;
+    }
     const short = loc.display_name?.split(',')[0] || loc.display_name;
     setActiveDropdown(null);
-    setSlot(which, { selected: loc, query: short, results: [], slotState: null });
+    setSlot(which, { selected: loc, query: short, results: [], slotState: null, error: null });
+    
+    // Log selected search result
+    console.log(`[SEARCH]\nquery=${short}\nselected=${loc.display_name}`);
+
     if (needsRes) resolveLocation(loc, which);
   };
 
@@ -357,7 +419,7 @@ export const ShipmentCreationFlow = ({
   };
 
   const clearSlot = (which) => {
-    setSlot(which, { query: '', results: [], selected: null, slotState: null, searching: false });
+    setSlot(which, { query: '', results: [], selected: null, slotState: null, searching: false, error: null });
     onClearRoute?.();
   };
 
@@ -388,8 +450,8 @@ export const ShipmentCreationFlow = ({
             dotColor={dotColor}
             query={slot.query}
             setQuery={text => {
-              setSlot(which, { query: text });
-              if (slot.selected) setSlot(which, { selected: null, slotState: null, results: [] });
+              setSlot(which, { query: text, error: null });
+              if (slot.selected) setSlot(which, { selected: null, slotState: null, results: [], error: null });
             }}
             results={slot.results}
             searching={slot.searching}
@@ -401,6 +463,15 @@ export const ShipmentCreationFlow = ({
             onClear={() => clearSlot(which)}
             freightMode={freightMode}
           />
+        )}
+
+        {slot.error && (
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            <AlertTriangle size={11} style={{ color: '#EF4444' }} />
+            <span className="text-[10px]" style={{ color: '#FCA5A5' }}>{slot.error}</span>
+          </div>
         )}
 
         {/* Resolving spinner inline */}
@@ -471,6 +542,20 @@ export const ShipmentCreationFlow = ({
       </div>
 
       {renderSlot('dest')}
+
+      <button
+        onClick={handleSearchRoute}
+        disabled={isSearchDisabled}
+        className="w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all mt-2.5 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+        style={{
+          background: isSearchDisabled ? 'rgba(255,255,255,0.04)' : 'var(--accent)',
+          border: isSearchDisabled ? '1px solid var(--border)' : '1px solid transparent',
+          color: isSearchDisabled ? 'var(--text-muted)' : '#FFFFFF',
+          boxShadow: isSearchDisabled ? 'none' : '0 4px 12px rgba(0,194,255,0.25)',
+        }}
+      >
+        SEARCH ROUTE
+      </button>
     </div>
   );
 };

@@ -6,7 +6,7 @@ import { RouteMap } from '../components/RouteMap';
 import RoutyChatPanel, { loadRouteHistory, saveRouteToHistory } from '../components/RoutyChatPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Anchor, Plane, Train, Truck,
+  Anchor, Plane, Truck,
   CloudRain, Wind, Sun, Zap, AlertTriangle,
   CheckCircle, ChevronDown, ChevronUp, ExternalLink, X,
   Play, Square, Clock, Activity,
@@ -17,14 +17,13 @@ import {
 const FREIGHT_MODES = [
   { label: 'Sea',    value: 'ship',  Icon: Anchor },
   { label: 'Air',    value: 'air',   Icon: Plane  },
-  { label: 'Ground', value: 'rail',  Icon: Truck  },
   { label: 'Road',   value: 'truck', Icon: Truck  },
 ];
 
 const ROUTE_LABELS = ['Optimal Route', 'Alternate 1', 'Alternate 2'];
 
-const MODE_ICONS = { sea: Anchor, ship: Anchor, air: Plane, rail: Train, truck: Truck, road: Truck };
-const MODE_COLORS = { sea: '#00C2FF', ship: '#00C2FF', air: '#00C2FF', rail: '#00C2FF', truck: '#00C2FF', road: '#00C2FF' };
+const MODE_ICONS = { sea: Anchor, ship: Anchor, air: Plane, truck: Truck, road: Truck };
+const MODE_COLORS = { sea: '#00C2FF', ship: '#00C2FF', air: '#00C2FF', truck: '#00C2FF', road: '#00C2FF' };
 
 const getWeatherIcon = (condition) => {
   if (!condition) return Wind;
@@ -169,6 +168,7 @@ const Dashboard = () => {
   const [showMyRoutes, setShowMyRoutes]         = useState(true);
   const [aiRec, setAiRec]                       = useState(null);
   const [aiRecLoading, setAiRecLoading]         = useState(false);
+  const [modeResetToken, setModeResetToken]     = useState(0);
 
   // Load route history from localStorage
   useEffect(() => {
@@ -226,15 +226,24 @@ const Dashboard = () => {
     setIsNavigating(false);
   }, []);
 
+  const handleModeChange = useCallback((value) => {
+    if (value === freightMode) return;
+    handleClearRoute();
+    setAiRec(null);
+    setShowRouty(false);
+    setFreightMode(value);
+    setModeResetToken(t => t + 1);
+  }, [freightMode, handleClearRoute]);
+
   // Called when Routy chat generates a route
   const handleRoutyRoute = useCallback(({ source, destination, mode }) => {
     setSelectedSource(source);
     setSelectedDest(destination);
     // Map agent mode to freight mode
-    const modeMap = { sea: 'ship', air: 'air', rail: 'rail', truck: 'truck', road: 'truck' };
-    setFreightMode(modeMap[mode] || freightMode);
+    const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
+    handleModeChange(modeMap[mode] || freightMode);
     setShowRouty(false);
-  }, [freightMode]);
+  }, [freightMode, handleModeChange]);
 
   // Called when Routy saves a route
   const handleRoutySaved = useCallback(() => {
@@ -246,10 +255,10 @@ const Dashboard = () => {
     if (r.source && r.dest) {
       setSelectedSource(r.source);
       setSelectedDest(r.dest);
-      const modeMap = { sea: 'ship', air: 'air', rail: 'rail', truck: 'truck', road: 'truck' };
-      setFreightMode(modeMap[r.mode] || 'ship');
+      const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
+      handleModeChange(modeMap[r.mode] || 'ship');
     }
-  }, []);
+  }, [handleModeChange]);
 
   const handleClearHistory = useCallback(() => {
     localStorage.removeItem('routeguardian_routes');
@@ -297,7 +306,7 @@ const Dashboard = () => {
             {FREIGHT_MODES.map(({ label, value, Icon }) => (
               <button
                 key={value}
-                onClick={() => setFreightMode(value)}
+                onClick={() => handleModeChange(value)}
                 className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-[9px] font-bold transition-all"
                 style={{
                   background: freightMode === value ? 'rgba(15,23,42,0.85)' : 'transparent',
@@ -634,6 +643,7 @@ const Dashboard = () => {
           isNavigating={isNavigating}
           simSpeed={simSpeed}
           aiRecommendation={aiRec}
+            resetSignal={modeResetToken}
         />
 
         {/* Routy chat panel — slides over the map */}

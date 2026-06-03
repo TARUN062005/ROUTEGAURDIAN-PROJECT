@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { loadRouteHistory, clearRouteHistory } from '../components/RoutyChatPanel';
 import {
-  Anchor, Plane, Train, Truck, ChevronRight, Trash2,
+  Anchor, Plane, Truck, ChevronRight, Trash2,
   Package, MapPin, Clock, Shield, AlertTriangle, RefreshCw,
   ArrowRight, Activity,
 } from 'lucide-react';
 
-const MODE_ICONS  = { sea: Anchor, ship: Anchor, air: Plane, rail: Train, truck: Truck, road: Truck };
-const MODE_COLORS = { sea: '#00C2FF', ship: '#00C2FF', air: '#00C2FF', rail: '#00C2FF', truck: '#00C2FF', road: '#00C2FF' };
-const MODE_LABELS = { sea: 'Maritime', ship: 'Maritime', air: 'Air Freight', rail: 'Rail', truck: 'Road', road: 'Road' };
+const MODE_ICONS  = { sea: Anchor, ship: Anchor, air: Plane, truck: Truck, road: Truck };
+const MODE_COLORS = { sea: '#00C2FF', ship: '#00C2FF', air: '#00C2FF', truck: '#00C2FF', road: '#00C2FF' };
+const MODE_LABELS = { sea: 'Maritime', ship: 'Maritime', air: 'Air Freight', truck: 'Road', road: 'Road' };
 
 const SEV_STYLES = {
   CRITICAL: { bg: 'rgba(239,68,68,0.1)',  color: '#EF4444', border: 'rgba(239,68,68,0.25)' },
@@ -135,7 +135,6 @@ const ShipmentsPage = () => {
               { value: 'all',   label: 'All' },
               { value: 'sea',   label: 'Maritime' },
               { value: 'air',   label: 'Air' },
-              { value: 'rail',  label: 'Rail' },
               { value: 'truck', label: 'Road' },
             ].map(({ value, label }) => (
               <button

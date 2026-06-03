@@ -2,19 +2,18 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import {
-  X, Mic, MicOff, Send, Bot, Anchor, Plane, Train, Truck,
+  X, Mic, MicOff, Send, Bot, Anchor, Plane, Truck,
   MapPin, Calendar, Package, Zap, ChevronRight, RotateCcw,
   CheckCircle2, Circle, Clock,
 } from 'lucide-react';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
-const MODE_MAP = { sea: 'ship', ship: 'sea', air: 'air', rail: 'rail', truck: 'truck', road: 'truck' };
+const MODE_MAP = { sea: 'ship', ship: 'sea', air: 'air', truck: 'truck', road: 'truck' };
 
 const MODE_OPTS = [
   { value: 'sea',   label: 'Sea',  Icon: Anchor, color: '#0d47a1' },
   { value: 'air',   label: 'Air',  Icon: Plane,  color: '#0288d1' },
-  { value: 'rail',  label: 'Rail', Icon: Train,  color: '#00C2FF' },
   { value: 'truck', label: 'Road', Icon: Truck,  color: '#c2410c' },
 ];
 
@@ -471,7 +470,7 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
       const nextQ = !updatedState.destination
         ? 'Great choice! Now, where are you shipping to?'
         : !updatedState.mode
-        ? 'Which transport mode — Sea, Air, Rail, or Road?'
+        ? 'Which transport mode — Sea, Air, or Road?'
         : !updatedState.date
         ? 'What date would you like to ship?'
         : !updatedState.time
@@ -523,7 +522,7 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
   }, [convHistory, addMsg, onRouteGenerated, onClose, onRouteSaved]);
 
   const handleModeSelect = useCallback((mode) => {
-    const modeLabels = { sea: 'Sea (maritime)', air: 'Air freight', rail: 'Rail', truck: 'Road' };
+    const modeLabels = { sea: 'Sea (maritime)', air: 'Air freight', truck: 'Road' };
     addMsg('user', modeLabels[mode] || mode);
     const updatedState = { ...convState, mode };
     setConvState(updatedState);

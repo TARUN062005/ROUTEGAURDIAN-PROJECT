@@ -128,6 +128,16 @@ const MapFitBounds = ({ allRoutes }) => {
   return null;
 };
 
+// ── Reset map view on mode change ───────────────────────────────
+const MapReset = ({ resetSignal }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (resetSignal == null) return;
+    map.setView([25, 15], 2, { animate: false });
+  }, [resetSignal, map]);
+  return null;
+};
+
 // ── Locate-me control ────────────────────────────────────────────
 const LocateMeButton = () => {
   const map = useMap();
@@ -161,6 +171,7 @@ export const RouteMap = ({
   activeRouteIndex = 0, onSetActiveRoute,
   isNavigating = false, simSpeed = 2,
   aiRecommendation = null,
+  resetSignal = null,
 }) => {
   const [allRoutes, setAllRoutes]           = useState([]);
   const [loading, setLoading]               = useState(false);
@@ -174,11 +185,26 @@ export const RouteMap = ({
   const [portDestCoord,   setPortDestCoord]   = useState(null);
   const [portOriginName,  setPortOriginName]  = useState(null);
   const [portDestName,    setPortDestName]    = useState(null);
+  const [routeError,      setRouteError]      = useState(null);
 
   useEffect(() => { setShowSeamarks(freightMode === 'ship'); }, [freightMode]);
 
   const onRouteDataRef = useRef(onRouteData);
   useEffect(() => { onRouteDataRef.current = onRouteData; }, [onRouteData]);
+
+  useEffect(() => {
+    if (resetSignal == null) return;
+    setAllRoutes([]);
+    setPortOriginCoord(null);
+    setPortDestCoord(null);
+    setPortOriginName(null);
+    setPortDestName(null);
+    setHoveredRoute(null);
+    setShowRiskPanel(false);
+    setRouteError(null);
+    onSetActiveRoute?.(0);
+    onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
+  }, [resetSignal, onSetActiveRoute]);
 
   const tileUrls = {
     voyager:   'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -223,9 +249,22 @@ export const RouteMap = ({
         }
 
         onRouteDataRef.current?.({ allRoutes: processed, activeRouteIndex: 0 });
+        setRouteError(null);
+      } else {
+        setAllRoutes([]);
+        setPortOriginCoord(null); setPortDestCoord(null);
+        setPortOriginName(null);  setPortDestName(null);
+        onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
+        setRouteError('No route could be generated between these points.');
       }
     } catch (err) {
       console.error('Route fetch error:', err.message);
+      setAllRoutes([]);
+      setPortOriginCoord(null); setPortDestCoord(null);
+      setPortOriginName(null);  setPortDestName(null);
+      onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
+      const errMsg = err.response?.data?.details || err.response?.data?.error || err.message || 'Routing engine failed';
+      setRouteError(errMsg);
     } finally {
       setLoading(false);
     }
@@ -240,6 +279,7 @@ export const RouteMap = ({
       setPortOriginCoord(null); setPortDestCoord(null);
       setPortOriginName(null);  setPortDestName(null);
       onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
+      setRouteError(null);
     }
   }, [selectedSource, selectedDestination, vehicleMode, fetchRoutes]);
 
@@ -259,7 +299,6 @@ export const RouteMap = ({
   const MODE_STYLE = {
     ship:  { activeColor: '#00C2FF', altColor: '#00C2FF', glowColor: 'transparent', weight: 5, altWeight: 4, dashArray: null,    glowW: 0 },
     air:   { activeColor: '#00C2FF', altColor: '#00C2FF', glowColor: 'transparent', weight: 4, altWeight: 3, dashArray: '12 8',  glowW: 0 },
-    rail:  { activeColor: '#00C2FF', altColor: '#00C2FF', glowColor: 'transparent', weight: 5, altWeight: 4, dashArray: '14 5',  glowW: 0 },
     truck: { activeColor: '#00C2FF', altColor: '#00C2FF', glowColor: 'transparent', weight: 5, altWeight: 4, dashArray: null,    glowW: 0 },
   };
   const modeStyle = MODE_STYLE[freightMode] || MODE_STYLE.truck;
@@ -297,7 +336,7 @@ export const RouteMap = ({
         const color    = isActive ? modeStyle.activeColor : riskLineColor;
         const weight   = isActive ? modeStyle.weight : (isHov ? modeStyle.altWeight + 1 : modeStyle.altWeight);
         const opacity  = isActive ? 1 : (isHov ? 0.82 : 0.55);
-        const dash     = !isActive && (freightMode === 'air' || freightMode === 'rail') ? modeStyle.dashArray : (isActive ? null : modeStyle.dashArray);
+        const dash     = !isActive && freightMode === 'air' ? modeStyle.dashArray : (isActive ? null : modeStyle.dashArray);
 
         // Duration label
         const durLabel = freightMode === 'ship'
@@ -438,7 +477,6 @@ export const RouteMap = ({
             <span className="text-[10px] font-black text-white uppercase tracking-widest">
               {freightMode === 'ship'  ? 'Maritime Route Intelligence'
              : freightMode === 'air'  ? 'Air Route · Great-Circle Path'
-             : freightMode === 'rail' ? 'Rail Route Intelligence'
              : 'Road Route Intelligence'}
             </span>
             {isMaritime && showSeamarks && <span className="text-[8px] font-bold" style={{ color: 'var(--text-secondary)' }}>· OpenSeaMap</span>}
@@ -537,6 +575,7 @@ export const RouteMap = ({
         style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
         zoomControl={false} dragging attributionControl={false}>
         <MapFitBounds allRoutes={allRoutes} />
+        <MapReset resetSignal={resetSignal} />
         <ZoomControl position="bottomright" />
         <LocateMeButton />
         <TileLayer url={tileUrls[mapType]} attribution='&copy; CARTO' maxZoom={20} />
@@ -640,6 +679,40 @@ export const RouteMap = ({
         freightMode={freightMode}
         aiRecommendation={aiRecommendation}
       />
+
+      {/* Error Warning Banner Overlay */}
+      <AnimatePresence>
+        {routeError && (
+          <motion.div
+            initial={{ opacity: 0, y: 15, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] w-[90%] max-w-lg p-4 rounded-2xl border backdrop-blur-xl shadow-2xl flex items-start gap-3.5"
+            style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              borderColor: 'rgba(239, 68, 68, 0.35)',
+              boxShadow: '0 8px 32px 0 rgba(239, 68, 68, 0.2), inset 0 0 12px rgba(239, 68, 68, 0.1)'
+            }}
+          >
+            <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'rgba(239, 68, 68, 0.25)' }}>
+              <AlertTriangle size={18} className="text-red-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-black text-red-200 tracking-wide uppercase">Route Computation Blocked</h4>
+              <p className="text-xs text-red-300/90 mt-1 font-medium leading-relaxed">{routeError}</p>
+            </div>
+            <button
+              onClick={() => setRouteError(null)}
+              className="p-1 rounded-lg hover:bg-white/5 transition-colors flex-shrink-0"
+              style={{ color: 'rgba(239, 68, 68, 0.7)' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#FCA5A5'}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(239, 68, 68, 0.7)'}
+            >
+              <X size={15} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

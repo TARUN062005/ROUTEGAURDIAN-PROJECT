@@ -3,12 +3,11 @@ import { RouteMap } from '../components/RouteMap';
 import RoutyChatPanel, { saveRouteToHistory, loadRouteHistory } from '../components/RoutyChatPanel';
 import { ShipmentCreationFlow } from '../components/ShipmentCreationFlow';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Anchor, Plane, Train, Truck, Bot, X, ChevronDown } from 'lucide-react';
+import { Anchor, Plane, Truck, Bot, X, ChevronDown } from 'lucide-react';
 
 const FREIGHT_MODES = [
   { label: 'Sea',  value: 'ship',  Icon: Anchor },
   { label: 'Air',  value: 'air',   Icon: Plane  },
-  { label: 'Rail', value: 'rail',  Icon: Train  },
   { label: 'Road', value: 'truck', Icon: Truck  },
 ];
 
@@ -22,8 +21,9 @@ const RoutesMapPage = () => {
   const [simSpeed, setSimSpeed]                 = useState(2);
   const [showRouty, setShowRouty]               = useState(false);
   const [showControls, setShowControls]         = useState(true);
+  const [modeResetToken, setModeResetToken]     = useState(0);
 
-  const vehicleMode = FREIGHT_MODES.find(m => m.value === freightMode)?.vehicle || 'truck';
+  const vehicleMode = freightMode;
 
   const handleRouteData = useCallback(({ allRoutes: routes, activeRouteIndex: idx }) => {
     setAllRoutes(routes || []);
@@ -51,13 +51,21 @@ const RoutesMapPage = () => {
     setIsNavigating(false);
   }, []);
 
+  const handleModeChange = useCallback((value) => {
+    if (value === freightMode) return;
+    handleClearRoute();
+    setShowRouty(false);
+    setFreightMode(value);
+    setModeResetToken(t => t + 1);
+  }, [freightMode, handleClearRoute]);
+
   const handleRoutyRoute = useCallback(({ source, destination, mode }) => {
     setSelectedSource(source);
     setSelectedDest(destination);
-    const modeMap = { sea: 'ship', air: 'air', rail: 'rail', truck: 'truck', road: 'truck' };
-    setFreightMode(modeMap[mode] || freightMode);
+    const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
+    handleModeChange(modeMap[mode] || freightMode);
     setShowRouty(false);
-  }, [freightMode]);
+  }, [freightMode, handleModeChange]);
 
   return (
     <div className="dashboard-shell h-full w-full relative overflow-hidden text-white">
@@ -71,7 +79,7 @@ const RoutesMapPage = () => {
             {FREIGHT_MODES.map(({ label, value, Icon }) => (
               <button
                 key={value}
-                onClick={() => setFreightMode(value)}
+                onClick={() => handleModeChange(value)}
                 title={label}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-bold transition-all"
                 style={{
@@ -138,6 +146,7 @@ const RoutesMapPage = () => {
         onSetActiveRoute={setActiveRouteIndex}
         isNavigating={isNavigating}
         simSpeed={simSpeed}
+        resetSignal={modeResetToken}
       />
 
       {/* Routy chat panel */}
