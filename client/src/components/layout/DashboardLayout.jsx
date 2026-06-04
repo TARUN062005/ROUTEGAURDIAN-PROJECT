@@ -16,8 +16,7 @@ const NAV_H = 64;
 
 const NAV_ITEMS = [
   { to: "/dashboard",  icon: LayoutDashboard, label: "Dashboard",  exact: true  },
-  { to: "/routes-map", icon: Map,             label: "Routes Map", exact: true  },
-  { to: "/notifications", icon: AlertTriangle, label: "Risk Alerts", exact: true, badge: true },
+  { to: "/notifications", icon: AlertTriangle, label: "Risk Alerts", exact: true },
   { to: "/shipments",  icon: Package,          label: "Shipments",  exact: true  },
 ];
 
@@ -25,69 +24,18 @@ const DashboardLayout = () => {
   const { user, logout } = useAuth();
   const location  = useLocation();
   const navigate  = useNavigate();
-  const BASE_URL  = import.meta.env.VITE_BACKEND_URL || "";
 
   const [collapsed, setCollapsed]                   = useState(false);
   const [isProfileOpen, setIsProfileOpen]           = useState(false);
-  const [showBell, setShowBell]                     = useState(false);
-  const [unreadCount, setUnreadCount]               = useState(0);
-  const [notifLoading, setNotifLoading]             = useState(false);
-  const [recentNotifs, setRecentNotifs]             = useState([]);
 
   const profileRef = useRef(null);
-  const bellRef    = useRef(null);
 
   const sidebarW = collapsed ? COLLAPSED_W : SIDEBAR_W;
 
-  // ── Notifications ────────────────────────────────────────────────
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      setNotifLoading(true);
-      const res = await axios.get(`${BASE_URL}/api/user/notifications?mode=unreadCount`, { withCredentials: true });
-      if (res.data?.success) setUnreadCount(res.data?.unreadCount || 0);
-    } catch (err) {
-      console.error("Unread count fetch failed:", err.message);
-    } finally {
-      setNotifLoading(false);
-    }
-  }, [BASE_URL]);
-
-  const fetchRecentNotifs = useCallback(async () => {
-    try {
-      const res = await axios.get(`${BASE_URL}/api/user/notifications?limit=5`, { withCredentials: true });
-      if (res.data?.success) setRecentNotifs(res.data.notifications || []);
-    } catch (err) {
-      console.error("Failed to fetch recent notifications:", err.message);
-    }
-  }, [BASE_URL]);
-
-  const markRead = useCallback(async (id) => {
-    try {
-      await axios.patch(`${BASE_URL}/api/user/notifications/${id}/read`, {}, { withCredentials: true });
-      setRecentNotifs(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch {}
-  }, [BASE_URL]);
-
-  const markAllRead = useCallback(async () => {
-    try {
-      const res = await axios.patch(`${BASE_URL}/api/user/notifications/read-all`, {}, { withCredentials: true });
-      if (res.data?.success) {
-        toast.success("All notifications marked as read");
-        setRecentNotifs(prev => prev.map(n => ({ ...n, isRead: true })));
-        setUnreadCount(0);
-        setShowBell(false);
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to mark all as read");
-    }
-  }, [BASE_URL]);
-
-  // Click outside
+  // Click outside profile dropdown
   useEffect(() => {
     const handler = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target)) setIsProfileOpen(false);
-      if (bellRef.current && !bellRef.current.contains(e.target)) setShowBell(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -95,48 +43,15 @@ const DashboardLayout = () => {
 
   useEffect(() => {
     setIsProfileOpen(false);
-    setShowBell(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    fetchUnreadCount();
-    fetchRecentNotifs();
-    const t = setInterval(() => {
-      fetchUnreadCount();
-      if (showBell) fetchRecentNotifs();
-    }, 30000);
-    return () => clearInterval(t);
-  }, [fetchUnreadCount, fetchRecentNotifs, showBell]);
 
   const handleLogout = () => { logout(); navigate("/"); };
 
-  const getNotifIcon = (type) => {
-    switch (type) {
-      case "SECURITY":     return <AlertTriangle className="text-red-400"    size={14} />;
-      case "ANNOUNCEMENT": return <Megaphone     className="text-indigo-400" size={14} />;
-      case "MARKETING":    return <Mail          className="text-emerald-400" size={14} />;
-      default:             return <Bell          className="text-blue-400"   size={14} />;
-    }
-  };
-
-  const fmtTime = (ds) => {
-    const d = new Date(ds), now = new Date();
-    const m = Math.floor((now - d) / 60000);
-    if (m < 1) return "Just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const day = Math.floor(h / 24);
-    if (day < 7) return `${day}d ago`;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
   // Pages where main content is full-height (no scroll, map fills space)
-  const isFullHeight = ["/dashboard", "/routes-map"].includes(location.pathname);
+  const isFullHeight = location.pathname === "/dashboard";
 
   const pageTitle =
     location.pathname === "/dashboard"   ? "Mission Control" :
-    location.pathname === "/routes-map"  ? "Routes Map"      :
     location.pathname === "/shipments"   ? "Shipments"       :
     location.pathname === "/notifications" ? "Risk Alerts"   :
     location.pathname === "/settings"    ? "Settings"        :
@@ -205,10 +120,9 @@ const DashboardLayout = () => {
             </p>
           )}
           <div className="space-y-0.5">
-            {NAV_ITEMS.map(({ to, icon: Icon, label, badge }) => {
+            {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
               const isActive =
                 label === "Dashboard"  && location.pathname === "/dashboard"    ? true :
-                label === "Routes Map" && location.pathname === "/routes-map"   ? true :
                 label === "Risk Alerts"&& location.pathname === "/notifications" ? true :
                 label === "Shipments"  && location.pathname === "/shipments"    ? true :
                 false;
@@ -228,14 +142,6 @@ const DashboardLayout = () => {
                     <Icon size={17} style={{ flexShrink: 0 }} />
                     {!collapsed && <span className="text-sm font-semibold whitespace-nowrap">{label}</span>}
                   </div>
-                  {!collapsed && badge && unreadCount > 0 && (
-                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "var(--danger)", color: "#fff" }}>
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                  {collapsed && badge && unreadCount > 0 && (
-                    <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full" style={{ background: "var(--danger)" }} />
-                  )}
                   {!collapsed && isActive && (
                     <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent)" }} />
                   )}
@@ -317,89 +223,6 @@ const DashboardLayout = () => {
                 <Navigation size={14} /> New Route
               </button>
             )}
-
-            {/* Bell */}
-            <div className="relative" ref={bellRef}>
-              <button
-                onClick={() => { setShowBell(v => !v); if (!showBell) fetchRecentNotifs(); }}
-                className="relative w-10 h-10 rounded-2xl flex items-center justify-center transition-all dashboard-chip hover:text-white"
-              >
-                {notifLoading
-                  ? <Loader2 className="animate-spin" size={18} />
-                  : <Bell size={18} />}
-                {unreadCount > 0 && (
-                  <span
-                    className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full border-2"
-                    style={{ background: "var(--danger)", borderColor: "#0B1224" }}
-                  />
-                )}
-              </button>
-
-              {showBell && (
-                <div
-                  className="absolute right-0 mt-2 w-80 rounded-[24px] shadow-2xl py-2 z-50 flex flex-col overflow-hidden dashboard-surface-strong"
-                  style={{ maxHeight: "70vh" }}
-                >
-                  <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">Notifications</p>
-                        <p className="text-sm font-bold text-white">{unreadCount} unread</p>
-                      </div>
-                      {unreadCount > 0 && (
-                        <button onClick={markAllRead} className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-                          style={{ background: "rgba(15,23,42,0.8)", color: "#CBD5E1", border: "1px solid rgba(148,163,184,0.16)" }}>
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto py-1">
-                    {recentNotifs.length === 0 ? (
-                      <div className="px-4 py-8 text-center">
-                        <Bell size={28} style={{ color: "rgba(148,163,184,0.35)" }} className="mx-auto" />
-                        <p className="text-sm font-bold mt-2" style={{ color: "#6B7280" }}>No notifications yet</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5 px-2">
-                        {recentNotifs.map(n => (
-                          <div key={n.id}
-                            onClick={() => { if (!n.isRead) markRead(n.id); navigate("/notifications"); setShowBell(false); }}
-                            className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-all"
-                            style={{ background: !n.isRead ? "rgba(0,194,255,0.08)" : "transparent" }}
-                            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-                            onMouseLeave={e => e.currentTarget.style.background = !n.isRead ? "rgba(0,194,255,0.08)" : "transparent"}>
-                            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(148,163,184,0.16)" }}>
-                              {getNotifIcon(n.type)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold line-clamp-1" style={{ color: "#F9FAFB" }}>{n.title}</p>
-                              <p className="text-xs line-clamp-1 mt-0.5" style={{ color: "#6B7280" }}>{n.message}</p>
-                              <p className="text-[10px] mt-1" style={{ color: "#6B7280" }}>{fmtTime(n.createdAt)}</p>
-                            </div>
-                            {!n.isRead && <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: "var(--accent)" }} />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="px-3 pt-2 pb-1" style={{ borderTop: "1px solid var(--border)" }}>
-                    <Link to="/notifications" onClick={() => setShowBell(false)}
-                      className="flex items-center justify-center w-full py-2 rounded-xl text-sm font-bold transition-all"
-                      style={{ color: "var(--accent)" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(0,194,255,0.1)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      View all alerts
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="w-px h-6 rg-divider" />
 
             {/* Profile */}
             <div className="relative" ref={profileRef}>

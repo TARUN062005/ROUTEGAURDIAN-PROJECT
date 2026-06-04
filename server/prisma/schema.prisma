@@ -482,3 +482,25 @@ model AdminPermissionMapping {
 
   @@unique([adminId, permission])
 }
+
+model Shipment {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  origin         String
+  destination    String
+  mode           String
+  distance       Float
+  eta            Float
+  riskScore      Float?
+  safetyScore    Float?
+  routeGeometry  Json
+  cargo          String?
+  priority       String?
+  date           String?
+  time           String?
+  weatherSummary String?
+  riskSummary    String?
+  aiReport       String?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+}
+

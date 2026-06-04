@@ -11,6 +11,24 @@ const AirRouteProvider = require('../services/AirRouteProvider');
 const PortResolver = require('../services/PortResolver');
 const AirportResolver = require('../services/AirportResolver');
 
+const ALLOWED_THREATS = [
+  'conflict',
+  'sanctions',
+  'maritime',
+  'shipping',
+  'piracy',
+  'weather',
+  'airspace_restriction',
+  'port_closure',
+  'border_disruption'
+];
+
+const isThreat = (event) => {
+  if (!event || !event.label) return false;
+  const label = event.label.toLowerCase().trim();
+  return ALLOWED_THREATS.includes(label);
+};
+
 // HELPER: Strict Latin Script Enforcer (Protocol v17)
 function sanitizeEn(text, fallback = "Sector") {
   if (!text) return fallback;
@@ -38,7 +56,7 @@ const queryPhoton = async (q, limit) => {
       return response.data.features.map(f => {
         const props = f.properties || {};
         const coords = f.geometry?.coordinates || [0, 0];
-        
+
         const parts = [
           props.name,
           props.city,
@@ -128,7 +146,7 @@ const queryCacheFallback = (q) => {
   const qLower = q.toLowerCase().trim();
   const allKeys = geocoderCache.keys();
   const matchingKeys = allKeys.filter(k => k.startsWith(`geo-${qLower}`) || k.includes(`-${qLower}`));
-  
+
   let combined = [];
   const seen = new Set();
   const dedupKey = r => `${Math.round(parseFloat(r.lat) * 10)},${Math.round(parseFloat(r.lon) * 10)}`;
@@ -165,7 +183,7 @@ const isSeaPlace = (place) => {
   const displayName = (place.display_name || '').toLowerCase();
   const type = (place.type || '').toLowerCase();
   const cls = (place.class || '').toLowerCase();
-  
+
   const keywords = ['port', 'harbor', 'maritime', 'terminal', 'shipping terminal', 'harbour', 'dock', 'pier', 'quay'];
   return keywords.some(kw => name.includes(kw) || displayName.includes(kw)) || type === 'port' || cls === 'port';
 };
@@ -176,7 +194,7 @@ const isAirPlace = (place) => {
   const displayName = (place.display_name || '').toLowerCase();
   const type = (place.type || '').toLowerCase();
   const cls = (place.class || '').toLowerCase();
-  
+
   const keywords = ['airport', 'airfield', 'heliport', 'aerodrome', 'landing strip', 'airbase', 'aviation'];
   return keywords.some(kw => name.includes(kw) || displayName.includes(kw)) || type === 'airport' || cls === 'airport';
 };
@@ -185,7 +203,7 @@ const isAirPlace = (place) => {
 const calculateRankingScore = (place, queryText, mode = 'road') => {
   const q = queryText.toLowerCase().trim();
   const address = place.address || {};
-  
+
   const cityName = (address.city || address.town || address.village || address.municipality || '').toLowerCase().trim();
   const stateName = (address.state || '').toLowerCase().trim();
   const districtName = (address.state_district || address.county || '').toLowerCase().trim();
@@ -293,30 +311,46 @@ const airRouteProvider = new AirRouteProvider(airportResolver);
 // ── Global Known Risk Zones ─────────────────────────────────────────────────
 // Each zone is checked against route checkpoints; matching zones are returned in intelligence.riskZones
 const GLOBAL_RISK_ZONES = [
-  { id: 'red-sea',       lat: 14.0,  lon: 42.5,  radiusKm: 700, name: 'Red Sea / Bab-el-Mandeb', type: 'conflict', baselineSeverity: 'CRITICAL',
+  {
+    id: 'red-sea', lat: 14.0, lon: 42.5, radiusKm: 700, name: 'Red Sea / Bab-el-Mandeb', type: 'conflict', baselineSeverity: 'CRITICAL',
     reason: 'Houthi forces conducting active missile and drone attacks on commercial vessels. Over 60 incidents since Jan 2024. Major carriers have diverted via Cape of Good Hope, adding 10–14 transit days.',
-    keywords: ['red sea', 'houthi', 'bab el mandeb', 'yemen', 'suez'] },
-  { id: 'hormuz',        lat: 26.5,  lon: 56.5,  radiusKm: 300, name: 'Strait of Hormuz', type: 'conflict', baselineSeverity: 'HIGH',
+    keywords: ['red sea', 'houthi', 'bab el mandeb', 'yemen', 'suez']
+  },
+  {
+    id: 'hormuz', lat: 26.5, lon: 56.5, radiusKm: 300, name: 'Strait of Hormuz', type: 'conflict', baselineSeverity: 'HIGH',
     reason: '~20% of global oil flows through this chokepoint daily. Heightened US-Iran tensions. Iran has conducted vessel seizures and naval exercises, creating periodic closure risk.',
-    keywords: ['hormuz', 'iran', 'gulf', 'persian gulf'] },
-  { id: 'black-sea',     lat: 46.0,  lon: 33.0,  radiusKm: 700, name: 'Black Sea', type: 'conflict', baselineSeverity: 'CRITICAL',
+    keywords: ['hormuz', 'iran', 'gulf', 'persian gulf']
+  },
+  {
+    id: 'black-sea', lat: 46.0, lon: 33.0, radiusKm: 700, name: 'Black Sea', type: 'conflict', baselineSeverity: 'CRITICAL',
     reason: 'Active Russia–Ukraine war. Shipping severely disrupted. Naval mines reported in transit corridors. Ukrainian grain export corridor under constant threat from military operations.',
-    keywords: ['ukraine', 'russia', 'black sea', 'crimea', 'odesa'] },
-  { id: 'gulf-aden',     lat: 12.5,  lon: 47.5,  radiusKm: 500, name: 'Gulf of Aden', type: 'piracy', baselineSeverity: 'HIGH',
+    keywords: ['ukraine', 'russia', 'black sea', 'crimea', 'odesa']
+  },
+  {
+    id: 'gulf-aden', lat: 12.5, lon: 47.5, radiusKm: 500, name: 'Gulf of Aden', type: 'piracy', baselineSeverity: 'HIGH',
     reason: 'Historically elevated piracy risk zone. Regional instability has increased threat levels significantly. Armed groups targeting commercial vessels for ransom from adjacent coastlines.',
-    keywords: ['aden', 'somalia', 'piracy', 'hijack'] },
-  { id: 'south-china',   lat: 14.5,  lon: 113.5, radiusKm: 900, name: 'South China Sea', type: 'dispute', baselineSeverity: 'MODERATE',
+    keywords: ['aden', 'somalia', 'piracy', 'hijack']
+  },
+  {
+    id: 'south-china', lat: 14.5, lon: 113.5, radiusKm: 900, name: 'South China Sea', type: 'dispute', baselineSeverity: 'MODERATE',
     reason: 'Overlapping territorial claims by China, Taiwan, Philippines, Vietnam. Coast guard confrontations and naval standoffs frequently reported near disputed island chains and shipping corridors.',
-    keywords: ['south china', 'taiwan', 'philippine', 'spratly', 'paracel'] },
-  { id: 'e-med',         lat: 32.5,  lon: 34.5,  radiusKm: 500, name: 'Eastern Mediterranean', type: 'conflict', baselineSeverity: 'HIGH',
+    keywords: ['south china', 'taiwan', 'philippine', 'spratly', 'paracel']
+  },
+  {
+    id: 'e-med', lat: 32.5, lon: 34.5, radiusKm: 500, name: 'Eastern Mediterranean', type: 'conflict', baselineSeverity: 'HIGH',
     reason: 'Ongoing regional conflict affecting maritime security. Military operations and cross-border exchanges creating airspace and sea-lane uncertainty for commercial transit.',
-    keywords: ['israel', 'gaza', 'lebanon', 'hezbollah', 'eastern mediterranean'] },
-  { id: 'taiwan-strait', lat: 24.0,  lon: 120.5, radiusKm: 400, name: 'Taiwan Strait', type: 'dispute', baselineSeverity: 'HIGH',
+    keywords: ['israel', 'gaza', 'lebanon', 'hezbollah', 'eastern mediterranean']
+  },
+  {
+    id: 'taiwan-strait', lat: 24.0, lon: 120.5, radiusKm: 400, name: 'Taiwan Strait', type: 'dispute', baselineSeverity: 'HIGH',
     reason: 'Military exercises and cross-strait tensions create periodic closure risks to this critical chokepoint handling ~50 ships per day. PLA naval exercises have previously halted transit.',
-    keywords: ['taiwan', 'pla', 'strait', 'china sea'] },
-  { id: 'kerch',         lat: 45.4,  lon: 36.6,  radiusKm: 250, name: 'Kerch Strait', type: 'conflict', baselineSeverity: 'HIGH',
+    keywords: ['taiwan', 'pla', 'strait', 'china sea']
+  },
+  {
+    id: 'kerch', lat: 45.4, lon: 36.6, radiusKm: 250, name: 'Kerch Strait', type: 'conflict', baselineSeverity: 'HIGH',
     reason: 'Ukraine-Russia conflict zone. Russia-controlled strait connecting Black Sea to Sea of Azov. Commercial shipping suspended and subject to military enforcement.',
-    keywords: ['kerch', 'azov', 'ukraine bridge'] },
+    keywords: ['kerch', 'azov', 'ukraine bridge']
+  },
 ];
 
 function getDistance(p1, p2) {
@@ -351,7 +385,7 @@ function getCheckpoints(coords, distanceMeters = 50000) {
   const distanceKm = distanceMeters / 1000;
   // Adaptive Count: 100km=3, 600km=4, 1500km=10 (MAX CAP to avoid 429)
   const count = Math.min(10, Math.max(3, Math.ceil(distanceKm / 150)));
-  
+
   const result = [];
   const total = coords.length;
   for (let i = 0; i < count; i++) {
@@ -387,59 +421,59 @@ const harvestNews = async (queryFull, locations = []) => {
     // STEP 2: Strategic Query Refinement (Protocol v47 - Conflict Awareness)
     const hotZones = ["iran", "iraq", "israel", "ukraine", "russia", "middle east", "lebanon", "red sea", "palestine", "syria"];
     const isHotZone = locations.some(l => hotZones.some(z => l.toLowerCase().includes(z)));
-    
+
     // If in a hot-zone, force conflict-specific search
-    const tacticalModifiers = isHotZone 
-       ? "(war OR military OR missile OR airstrike OR conflict OR weapons OR fighting)"
-       : "(war OR riot OR strike OR military OR explosion OR roadblock OR 'border closed')";
-    
+    const tacticalModifiers = isHotZone
+      ? "(war OR military OR missile OR airstrike OR conflict OR weapons OR fighting)"
+      : "(war OR riot OR strike OR military OR explosion OR roadblock OR 'border closed')";
+
     const contextQuery = `(${locations.join(" OR ")}) AND ${tacticalModifiers}`;
-    
+
     const res = await axios.get("https://newsdata.io/api/1/news", {
-      params: { 
-        apikey: process.env.NEWSDATA_API_KEY, 
-        q: contextQuery, 
-        language: "en" 
+      params: {
+        apikey: process.env.NEWSDATA_API_KEY,
+        q: contextQuery,
+        language: "en"
       },
       timeout: 6000
     });
 
     let articles = res.data.results || [];
-    
+
     // STEP 2.1: Contextural Expansion Loop (Protocol v46)
     if (articles.length === 0) {
-       try {
-         const regionalRes = await axios.get("https://newsdata.io/api/1/news", {
-           params: { 
-             apikey: process.env.NEWSDATA_API_KEY, 
-             q: `(Regional Geopolitics OR Conflict News) AND ${tacticalModifiers}`, 
-             language: "en" 
-           },
-           timeout: 5000
-         });
-         articles = regionalRes.data.results || [];
-       } catch (regionalErr) {
-         console.warn("[GEO-SYNC-FALLBACK] Regional expansion failed");
-       }
+      try {
+        const regionalRes = await axios.get("https://newsdata.io/api/1/news", {
+          params: {
+            apikey: process.env.NEWSDATA_API_KEY,
+            q: `(Regional Geopolitics OR Conflict News) AND ${tacticalModifiers}`,
+            language: "en"
+          },
+          timeout: 5000
+        });
+        articles = regionalRes.data.results || [];
+      } catch (regionalErr) {
+        console.warn("[GEO-SYNC-FALLBACK] Regional expansion failed");
+      }
     }
 
     // STEP 2.2: Neural Situation Fallback (Protocol v47)
     if (articles.length === 0 && isHotZone) {
-       console.log(`[GEO-VELOCITY] Conflict Zone identified: ${locations[0]}. Generating Neural Status...`);
-       try {
-         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-         const statusRes = await model.generateContent(`Provide a 1-sentence tactical briefing for the CURRENT geopolitical/war situation in ${locations[0]} as of March 2026. Be objective.`);
-         return { 
-           status: "HIGH", 
-           summary: `NEURAL ALERT: ${statusRes.response.text().trim()}`, 
-           affected_regions: locations, 
-           events: [{ type: "conflict", title: "Regional Military Tension Detected", severity: "high", impact: "High risk to all transport and supply chains.", date: new Date().toISOString() }] 
-         };
-       } catch (e) { /* fallback */ }
+      console.log(`[GEO-VELOCITY] Conflict Zone identified: ${locations[0]}. Generating Neural Status...`);
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const statusRes = await model.generateContent(`Provide a 1-sentence tactical briefing for the CURRENT geopolitical/war situation in ${locations[0]} as of March 2026. Be objective.`);
+        return {
+          status: "HIGH",
+          summary: `NEURAL ALERT: ${statusRes.response.text().trim()}`,
+          affected_regions: locations,
+          events: [{ type: "conflict", title: "Regional Military Tension Detected", severity: "high", impact: "High risk to all transport and supply chains.", date: new Date().toISOString() }]
+        };
+      } catch (e) { /* fallback */ }
     }
 
     if (articles.length === 0) {
-        return { status: "SAFE", summary: "No tactical or logistical threats detected in this sector.", affected_regions: locations, events: [] };
+      return { status: "SAFE", summary: "No tactical or logistical threats detected in this sector.", affected_regions: locations, events: [] };
     }
 
     // STEP 3: Neural Truth Verification (AI-Sifting)
@@ -462,30 +496,30 @@ const harvestNews = async (queryFull, locations = []) => {
 
     const detectedEvents = [];
     articles.forEach((art, idx) => {
-        if (!verifiedIndices.includes(idx)) return;
-        
-        const text = ((art.title || "") + " " + (art.description || "")).toLowerCase();
-        let type = "conflict";
-        if (text.includes("strike") || text.includes("protest")) type = "protest";
-        if (text.includes("road") || text.includes("highway") || text.includes("close")) type = "transport-harm";
+      if (!verifiedIndices.includes(idx)) return;
 
-        detectedEvents.push({
-            type: type,
-            title: art.title,
-            severity: type === "conflict" ? "high" : "medium",
-            impact: `Tactical ${type} signal verified in mission zone.`,
-            link: art.link,
-            date: art.pubDate || new Date().toISOString()
-        });
+      const text = ((art.title || "") + " " + (art.description || "")).toLowerCase();
+      let type = "conflict";
+      if (text.includes("strike") || text.includes("protest")) type = "protest";
+      if (text.includes("road") || text.includes("highway") || text.includes("close")) type = "transport-harm";
+
+      detectedEvents.push({
+        type: type,
+        title: art.title,
+        severity: type === "conflict" ? "high" : "medium",
+        impact: `Tactical ${type} signal verified in mission zone.`,
+        link: art.link,
+        date: art.pubDate || new Date().toISOString()
+      });
     });
 
     const status = detectedEvents.some(e => e.severity === "high") ? "HIGH" : (detectedEvents.length > 0 ? "MODERATE" : "SAFE");
-    
+
     return {
-        status: status,
-        summary: `Strategic detection: ${detectedEvents.length} verified tactical threats confirmed.`,
-        affected_regions: locations,
-        events: detectedEvents.slice(0, 6)
+      status: status,
+      summary: `Strategic detection: ${detectedEvents.length} verified tactical threats confirmed.`,
+      affected_regions: locations,
+      events: detectedEvents.slice(0, 6)
     };
 
   } catch (err) {
@@ -554,12 +588,12 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
       });
 
     // 5. Composite risk score: zones (up to 60) + news (up to 25) + weather (up to 15)
-    const zoneRisk    = Math.min(60, routeRiskZones.reduce((acc, z) =>
+    const zoneRisk = Math.min(60, routeRiskZones.reduce((acc, z) =>
       acc + (z.severity === 'CRITICAL' ? 40 : z.severity === 'HIGH' ? 22 : 10), 0));
     const weatherRisk = Math.min(15, validWaypoints.filter(w => w.code >= 61).length * 5);
-    const newsRisk    = newsStatus.status === 'HIGH' ? 25 : newsStatus.status === 'MODERATE' ? 14 : 0;
-    const riskScore   = Math.min(100, Math.round(zoneRisk + weatherRisk + newsRisk));
-    const severity    = riskScore >= 68 ? 'CRITICAL' : riskScore >= 35 ? 'CAUTION' : 'STABLE';
+    const newsRisk = newsStatus.status === 'HIGH' ? 25 : newsStatus.status === 'MODERATE' ? 14 : 0;
+    const riskScore = Math.min(100, Math.round(zoneRisk + weatherRisk + newsRisk));
+    const severity = riskScore >= 68 ? 'CRITICAL' : riskScore >= 35 ? 'CAUTION' : 'STABLE';
 
     // 6. Final Assessment Bundle
     const finalIntel = {
@@ -578,14 +612,14 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
     // Uses Google News search links scoped to each detected risk zone on the route
     if (finalIntel.newsFeed.length === 0 && routeRiskZones.length > 0) {
       const ZONE_NEWS_LINKS = {
-        'red-sea':       'https://news.google.com/search?q=Red+Sea+Houthi+shipping+attack',
-        'hormuz':        'https://news.google.com/search?q=Strait+of+Hormuz+Iran+shipping+security',
-        'black-sea':     'https://news.google.com/search?q=Black+Sea+Ukraine+Russia+shipping',
-        'gulf-aden':     'https://news.google.com/search?q=Gulf+of+Aden+piracy+Somalia+shipping',
-        'south-china':   'https://news.google.com/search?q=South+China+Sea+dispute+shipping+security',
-        'e-med':         'https://news.google.com/search?q=Eastern+Mediterranean+conflict+shipping',
+        'red-sea': 'https://news.google.com/search?q=Red+Sea+Houthi+shipping+attack',
+        'hormuz': 'https://news.google.com/search?q=Strait+of+Hormuz+Iran+shipping+security',
+        'black-sea': 'https://news.google.com/search?q=Black+Sea+Ukraine+Russia+shipping',
+        'gulf-aden': 'https://news.google.com/search?q=Gulf+of+Aden+piracy+Somalia+shipping',
+        'south-china': 'https://news.google.com/search?q=South+China+Sea+dispute+shipping+security',
+        'e-med': 'https://news.google.com/search?q=Eastern+Mediterranean+conflict+shipping',
         'taiwan-strait': 'https://news.google.com/search?q=Taiwan+Strait+military+tension+shipping',
-        'kerch':         'https://news.google.com/search?q=Kerch+Strait+Russia+Ukraine+Black+Sea',
+        'kerch': 'https://news.google.com/search?q=Kerch+Strait+Russia+Ukraine+Black+Sea',
       };
       finalIntel.newsFeed = routeRiskZones.slice(0, 5).map(zone => ({
         type: zone.type,
@@ -605,10 +639,10 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
     geminiCache.set(cacheKey, finalIntel);
     return finalIntel;
   } catch (err) {
-    return { 
-      summary: "Mission Protocol Offline.", 
-      newsStatus: "UNKNOWN", 
-      newsFeed: [], 
+    return {
+      summary: "Mission Protocol Offline.",
+      newsStatus: "UNKNOWN",
+      newsFeed: [],
       waypointReports: [],
       severity: "STABLE",
       riskScore: 50
@@ -633,7 +667,7 @@ const isUniqueRoute = (route, existing) => {
       const match = coords2.some(p2 => Math.abs(p[0] - p2[0]) < 0.0005 && Math.abs(p[1] - p2[1]) < 0.0005);
       if (match) matches++;
     }
-    return (matches / checked) > 0.80; 
+    return (matches / checked) > 0.80;
   });
 };
 
@@ -655,6 +689,140 @@ const fetchRoutesFromProvider = async (start, end, profile = 'driving') => {
   }
 };
 
+function getMaritimeRegion(lat, lon) {
+  // Check canals & straits first (smaller bounding boxes)
+  if (lat >= 29.9 && lat <= 31.3 && lon >= 32.2 && lon <= 32.6) return "Suez Canal";
+  if (lat >= 12.5 && lat <= 13.0 && lon >= 43.0 && lon <= 43.5) return "Bab-el-Mandeb Strait";
+  if (lat >= 26.0 && lat <= 27.0 && lon >= 55.8 && lon <= 56.9) return "Strait of Hormuz";
+  if (lat >= 1.0 && lat <= 1.5 && lon >= 103.5 && lon <= 104.5) return "Singapore Strait";
+  if (lat >= 1.0 && lat <= 6.0 && lon >= 95.0 && lon <= 104.0) return "Strait of Malacca";
+  if (lat >= 8.9 && lat <= 9.3 && lon >= -80.0 && lon <= -79.7) return "Panama Canal";
+  if (lat >= 35.8 && lat <= 36.1 && lon >= -6.2 && lon <= -5.2) return "Strait of Gibraltar";
+
+  // Check seas & gulfs
+  if (lat >= 12.0 && lat <= 30.0 && lon >= 32.0 && lon <= 43.0) return "Red Sea";
+  if (lat >= 24.0 && lat <= 30.0 && lon >= 48.0 && lon <= 57.0) return "Persian Gulf";
+  if (lat >= 11.0 && lat <= 15.0 && lon >= 43.0 && lon <= 51.0) return "Gulf of Aden";
+  if (lat >= 5.0 && lat <= 25.0 && lon >= 50.0 && lon <= 77.0) return "Arabian Sea";
+  if (lat >= 5.0 && lat <= 23.0 && lon >= 77.0 && lon <= 98.0) return "Bay of Bengal";
+  if (lat >= -5.0 && lat <= 23.0 && lon >= 99.0 && lon <= 121.0) return "South China Sea";
+  if (lat >= 23.0 && lat <= 33.0 && lon >= 117.0 && lon <= 131.0) return "East China Sea";
+  if (lat >= 33.0 && lat <= 48.0 && lon >= 128.0 && lon <= 143.0) return "Sea of Japan";
+  if (lat >= 30.0 && lat <= 46.0 && lon >= -6.0 && lon <= 36.0) return "Mediterranean Sea";
+  if (lat >= 51.0 && lat <= 61.0 && lon >= -4.0 && lon <= 9.0) return "North Sea";
+  if (lat >= 49.0 && lat <= 51.2 && lon >= -6.0 && lon <= 2.0) return "English Channel";
+
+  // Oceans
+  if (lat >= -60.0 && lat <= 60.0 && lon >= -80.0 && lon <= -10.0) return "Atlantic Ocean";
+  if (lon >= 120.0 || lon <= -120.0) return "Pacific Ocean";
+  if (lat >= -40.0 && lat <= 10.0 && lon >= 20.0 && lon <= 120.0) return "Indian Ocean";
+
+  return null;
+}
+
+const reverseGeocodePhoton = async (lat, lon, mode) => {
+  try {
+    const isShip = mode === 'ship' || mode === 'sea';
+    const isAir = mode === 'air';
+
+    // 1. Proximity checks for airports and seaports
+    if (isShip) {
+      try {
+        const nearest = await portResolver.findNearest(lat, lon);
+        if (nearest && nearest.port && nearest.distanceKm < 80) {
+          return `${nearest.port.name} Port`;
+        }
+      } catch (e) {
+        console.warn(`[reverseGeocodePhoton] Port check failed: ${e.message}`);
+      }
+      const seaName = getMaritimeRegion(lat, lon);
+      if (seaName) return seaName;
+    } else if (isAir) {
+      try {
+        const nearest = await airportResolver.findNearest(lat, lon);
+        if (nearest && nearest.airport && nearest.distanceKm < 80) {
+          const code = nearest.airport.iata || nearest.airport.icao || '';
+          return `${nearest.airport.name}${code ? ` (${code})` : ''}`;
+        }
+      } catch (e) {
+        console.warn(`[reverseGeocodePhoton] Airport check failed: ${e.message}`);
+      }
+    }
+
+    // 2. Geocoder fallback
+    const response = await axios.get('https://photon.komoot.io/api/', {
+      params: { lat, lon, limit: 1 },
+      timeout: 3000
+    });
+    if (response.data && Array.isArray(response.data.features) && response.data.features.length > 0) {
+      const props = response.data.features[0].properties || {};
+      const name = props.name || props.city || props.district || props.state || props.country;
+      const country = props.country || '';
+      const parts = [name, country].filter(Boolean);
+      const formatted = parts.join(', ');
+      if (formatted && !/\b\d+\.\d+\b/.test(formatted)) return formatted;
+    }
+  } catch (e) {
+    console.warn(`[Photon Reverse Geocode] Failed for ${lat},${lon}:`, e.message);
+  }
+
+  // 3. Last fallback: never show raw coordinates!
+  if (mode === 'ship' || mode === 'sea') {
+    const seaName = getMaritimeRegion(lat, lon);
+    return seaName || "Transit Corridor";
+  }
+  return "Transit Sector";
+};
+
+const getWeatherAlongRoute = async (coords, mode) => {
+  const checkpoints = getCheckpoints(coords);
+  const weatherPromises = checkpoints.map(async (p, i) => {
+    try {
+      const [wRes, placeName] = await Promise.all([
+        axios.get(`https://api.open-meteo.com/v1/forecast?latitude=${p[1]}&longitude=${p[0]}&current_weather=true`, { timeout: 3000 }),
+        reverseGeocodePhoton(p[1], p[0], mode)
+      ]);
+      const current = wRes.data.current_weather;
+
+      let finalPlace = placeName;
+      if (!finalPlace || /\b\d+\.\d+\b/.test(finalPlace)) {
+        if (mode === 'ship' || mode === 'sea') {
+          finalPlace = getMaritimeRegion(p[1], p[0]) || "Transit Corridor";
+        } else {
+          finalPlace = `Transit Sector ${i + 1}`;
+        }
+      }
+
+      return {
+        id: `A${i}`,
+        place: finalPlace,
+        weather: `${getWeatherCondition(current.weathercode)} • ${current.temperature}°C`,
+        temp: current.temperature,
+        wind: current.windspeed,
+        code: current.weathercode,
+        coords: [p[1], p[0]],
+        severity: current.weathercode >= 61 ? 'CAUTION' : 'STABLE'
+      };
+    } catch (e) {
+      const fallbackPlace = mode === 'ship' || mode === 'sea'
+        ? (getMaritimeRegion(p[1], p[0]) || "Transit Corridor")
+        : `Transit Sector ${i + 1}`;
+      return {
+        id: `A${i}`,
+        place: fallbackPlace,
+        weather: "Standard • 25°C",
+        condition: "Clear",
+        temp: 25,
+        wind: 5,
+        code: 0,
+        coords: [p[1], p[0]],
+        severity: 'STABLE'
+      };
+    }
+  });
+  return Promise.all(weatherPromises);
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // --- API HANDLERS ---
 
@@ -673,203 +841,147 @@ const getNearestRoadPoint = async (lat, lng) => {
   }
 };
 
-exports.getDirections = async (req, res) => {
+const computeRouteInternal = async (startLat, startLng, endLat, endLng, rawVehicle = 'driving', sourceName, destName) => {
   const totalStart = Date.now();
-  try {
-    const { startLat, startLng, endLat, endLng, vehicle: rawVehicle = 'driving', sourceName, destName } = req.query;
-    if (!startLat || !startLng || !endLat || !endLng) return res.status(400).json({ error: 'Missing coords' });
+  // Normalise mode aliases — frontend sends 'ship', agent may send 'sea', 'maritime', etc.
+  const MODE_ALIASES = { sea: 'ship', maritime: 'ship', land: 'truck', road: 'truck', ground: 'truck' };
+  const vehicle = MODE_ALIASES[rawVehicle] || rawVehicle;
+  console.log(`[ROUTING] MODE RECEIVED: "${rawVehicle}" → normalised to: "${vehicle}"`);
 
-    // Log [ROUTE REQUEST]
-    console.log(`[ROUTE REQUEST]\norigin=${sourceName || 'Unknown'}\ndestination=${destName || 'Unknown'}\nmode=${rawVehicle}`);
+  const sLat = parseFloat(startLat), sLon = parseFloat(startLng);
+  const eLat = parseFloat(endLat), eLon = parseFloat(endLng);
 
-    // Normalise mode aliases — frontend sends 'ship', agent may send 'sea', 'maritime', etc.
-    const MODE_ALIASES = { sea: 'ship', maritime: 'ship', land: 'truck', road: 'truck', ground: 'truck' };
-    const vehicle = MODE_ALIASES[rawVehicle] || rawVehicle;
-    console.log(`[ROUTING] MODE RECEIVED: "${rawVehicle}" → normalised to: "${vehicle}"`);
+  const isShip = vehicle === 'ship';
+  const isAir = vehicle === 'air';
 
-    const sLat = parseFloat(startLat), sLon = parseFloat(startLng);
-    const eLat = parseFloat(endLat),   eLon = parseFloat(endLng);
+  if (vehicle === 'rail') {
+    throw new Error('Rail routing is not supported');
+  }
 
-    const isShip = vehicle === 'ship';
-    const isAir  = vehicle === 'air';
-
-    if (vehicle === 'rail') {
-      return res.status(400).json({ error: 'Rail routing is not supported' });
+  // ── STRICT COORDINATE ENTITY VALIDATION (HTTP 422) ──────────────────────────────
+  if (isShip) {
+    const [startRes, endRes] = await Promise.all([
+      portResolver.findNearest(sLat, sLon),
+      portResolver.findNearest(eLat, eLon),
+    ]);
+    if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
+      throw {
+        status: 422,
+        error: 'Invalid entity type for Sea mode',
+        details: `Coordinates must be within 2.0km of valid seaports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
+      };
     }
+  } else if (isAir) {
+    const [startRes, endRes] = await Promise.all([
+      airportResolver.findNearest(sLat, sLon),
+      airportResolver.findNearest(eLat, eLon),
+    ]);
+    if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
+      throw {
+        status: 422,
+        error: 'Invalid entity type for Air mode',
+        details: `Coordinates must be within 2.0km of valid airports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
+      };
+    }
+  }
 
-    // ── STRICT COORDINATE ENTITY VALIDATION (HTTP 422) ──────────────────────────────
+  // Hard guard — sea/air must never fall through to OSRM land routing
+  if (isShip || isAir) {
+    console.log(`[ROUTING] ${isShip ? 'MARITIME' : 'AIR'} mode confirmed — using dedicated routing engine`);
+  }
+
+  // ── ROAD SNAPPING FOR LAND ROUTING ──────────────────────
+  let snappedStart = { lat: sLat, lng: sLon };
+  let snappedEnd = { lat: eLat, lng: eLon };
+  if (!isShip && !isAir) {
+    const [snapStart, snapEnd] = await Promise.all([
+      getNearestRoadPoint(sLat, sLon),
+      getNearestRoadPoint(eLat, eLon)
+    ]);
+    snappedStart = snapStart;
+    snappedEnd = snapEnd;
+  }
+
+  // ── OPTIMIZATION: BYPASS NOMINATIM REVERSE GEOCODING IF SUPPLIED ──
+  let sourceEn = sourceName || 'Origin';
+  let destEn = destName || 'Destination';
+  let geocodeTime = 0;
+
+  if (!sourceName || !destName) {
+    const geocodeStart = Date.now();
+    try {
+      const [sRes, dRes] = await Promise.all([
+        axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${startLat}&lon=${startLng}&zoom=14&accept-language=en&namedetails=1`, { headers: { 'User-Agent': 'RouteGuardian/1.1' } }),
+        axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${endLat}&lon=${endLng}&zoom=14&accept-language=en&namedetails=1`, { headers: { 'User-Agent': 'RouteGuardian/1.1' } }),
+      ]);
+      const sAddr = sRes.data?.address, dAddr = dRes.data?.address;
+      sourceEn = sourceName || sanitizeEn(sRes.data?.namedetails?.['name:en'] || sAddr?.city || sAddr?.town || sAddr?.state || sAddr?.country, 'Origin');
+      destEn = destName || sanitizeEn(dRes.data?.namedetails?.['name:en'] || dAddr?.city || dAddr?.town || dAddr?.state || dAddr?.country, 'Destination');
+      console.log(`[GEO-ANCHOR] ${sourceEn} -> ${destEn}`);
+    } catch (e) { }
+    geocodeTime = Date.now() - geocodeStart;
+  }
+
+  let routeStart = Date.now();
+  let processedRoutes = [];
+
+  // ── MARITIME / AIR ROUTING ───────────────────────────────
+  if (isShip || isAir) {
+    console.log(`[ROUTING] Mode: ${vehicle.toUpperCase()} | ${sLat},${sLon} → ${eLat},${eLon}`);
+
+    let providerResult;
+    let originPort = null;
+    let destPort = null;
+    let originAirport = null;
+    let destAirport = null;
+
     if (isShip) {
-      const [startRes, endRes] = await Promise.all([
-        portResolver.findNearest(sLat, sLon),
-        portResolver.findNearest(eLat, eLon),
-      ]);
-      if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
-        return res.status(422).json({
-          error: 'Invalid entity type for Sea mode',
-          details: `Coordinates must be within 2.0km of valid seaports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
-        });
-      }
-    } else if (isAir) {
-      const [startRes, endRes] = await Promise.all([
-        airportResolver.findNearest(sLat, sLon),
-        airportResolver.findNearest(eLat, eLon),
-      ]);
-      if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
-        return res.status(422).json({
-          error: 'Invalid entity type for Air mode',
-          details: `Coordinates must be within 2.0km of valid airports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
-        });
-      }
-    }
-
-    // Hard guard — sea/air must never fall through to OSRM land routing
-    if (isShip || isAir) {
-      console.log(`[ROUTING] ${isShip ? 'MARITIME' : 'AIR'} mode confirmed — using dedicated routing engine`);
-    }
-
-    // ── ROAD SNAPPING FOR LAND ROUTING ──────────────────────
-    let snappedStart = { lat: sLat, lng: sLon };
-    let snappedEnd = { lat: eLat, lng: eLon };
-    if (!isShip && !isAir) {
-      const [snapStart, snapEnd] = await Promise.all([
-        getNearestRoadPoint(sLat, sLon),
-        getNearestRoadPoint(eLat, eLon)
-      ]);
-      snappedStart = snapStart;
-      snappedEnd = snapEnd;
-    }
-
-    // ── OPTIMIZATION: BYPASS NOMINATIM REVERSE GEOCODING IF SUPPLIED ──
-    let sourceEn = sourceName || 'Origin';
-    let destEn   = destName   || 'Destination';
-    let geocodeTime = 0;
-
-    if (!sourceName || !destName) {
-      const geocodeStart = Date.now();
       try {
-        const [sRes, dRes] = await Promise.all([
-          axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${startLat}&lon=${startLng}&zoom=14&accept-language=en&namedetails=1`, { headers: { 'User-Agent': 'RouteGuardian/1.1' } }),
-          axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${endLat}&lon=${endLng}&zoom=14&accept-language=en&namedetails=1`,   { headers: { 'User-Agent': 'RouteGuardian/1.1' } }),
-        ]);
-        const sAddr = sRes.data?.address, dAddr = dRes.data?.address;
-        sourceEn = sourceName || sanitizeEn(sRes.data?.namedetails?.['name:en'] || sAddr?.city || sAddr?.town || sAddr?.state || sAddr?.country, 'Origin');
-        destEn   = destName || sanitizeEn(dRes.data?.namedetails?.['name:en'] || dAddr?.city || dAddr?.town || dAddr?.state || dAddr?.country, 'Destination');
-        console.log(`[GEO-ANCHOR] ${sourceEn} -> ${destEn}`);
-      } catch (e) {}
-      geocodeTime = Date.now() - geocodeStart;
-    }
-
-    let routeStart = Date.now();
-    let processedRoutes = [];
-
-    // ── MARITIME / AIR ROUTING ───────────────────────────────
-    if (isShip || isAir) {
-      console.log(`[ROUTING] Mode: ${vehicle.toUpperCase()} | ${sLat},${sLon} → ${eLat},${eLon}`);
-
-      let providerResult;
-      let originPort = null;
-      let destPort = null;
-      let originAirport = null;
-      let destAirport = null;
-
-      if (isShip) {
-        try {
-          providerResult = await seaRouteProvider.getRoutes({
-            startLat: sLat,
-            startLon: sLon,
-            endLat: eLat,
-            endLon: eLon,
-          });
-        } catch (err) {
-          console.error('[MARITIME] Provider error:', err.message);
-          throw err;
-        }
-        originPort = providerResult.originPort || null;
-        destPort = providerResult.destPort || null;
-        sourceEn = originPort ? `${originPort.name} Port` : sourceEn;
-        destEn = destPort ? `${destPort.name} Port` : destEn;
-        console.log(`[MARITIME] Route: ${sourceEn} → ${destEn} | ${providerResult?.routes?.length || 0} variants`);
-      } else {
-        providerResult = await airRouteProvider.getRoutes({
+        providerResult = await seaRouteProvider.getRoutes({
           startLat: sLat,
           startLon: sLon,
           endLat: eLat,
           endLon: eLon,
         });
-        originAirport = providerResult.originAirport || null;
-        destAirport = providerResult.destAirport || null;
-        const originCode = originAirport?.iata || originAirport?.icao || '';
-        const destCode = destAirport?.iata || destAirport?.icao || '';
-        sourceEn = originAirport ? `${originAirport.name}${originCode ? ` (${originCode})` : ''}` : sourceEn;
-        destEn = destAirport ? `${destAirport.name}${destCode ? ` (${destCode})` : ''}` : destEn;
-        console.log(`[AIR] Route: ${sourceEn} → ${destEn} | ${providerResult?.routes?.length || 0} variants`);
+      } catch (err) {
+        console.error('[MARITIME] Provider error:', err.message);
+        throw err;
       }
-
-      if (!providerResult?.routes || providerResult.routes.length === 0) {
-        return res.status(404).json({
-          error: 'No route found',
-          details: `Could not construct route geometry between these coordinates in ${isShip ? 'Sea' : 'Air'} mode.`
-        });
-      }
-
-      const snapKey = isShip
-        ? `v23-sea-${originPort?.wpi || originPort?.name || sLat.toFixed(2)}-${destPort?.wpi || destPort?.name || eLat.toFixed(2)}`
-        : `v23-air-${originAirport?.iata || originAirport?.icao || sLat.toFixed(2)}-${destAirport?.iata || destAirport?.icao || eLat.toFixed(2)}`;
-      
-      if (routeCache.has(snapKey)) {
-        const cachedRoutes = routeCache.get(snapKey);
-        const routeTime = Date.now() - routeStart;
-        const totalTime = Date.now() - totalStart;
-        console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
-        console.log(`[ROUTE TIME] duration=${routeTime}ms`);
-        console.log(`[RISK TIME] duration=0ms`);
-        console.log(`[INTELLIGENCE TIME] duration=0ms`);
-        console.log(`[TOTAL TIME] duration=${totalTime}ms`);
-        if (isShip) console.log(`[SEA TIME] duration=${totalTime}ms`);
-        else console.log(`[AIR TIME] duration=${totalTime}ms`);
-        return res.json({ success: true, routes: cachedRoutes });
-      }
-
-      const routeTime = Date.now() - routeStart;
-
-      const intelStart = Date.now();
-      processedRoutes = await Promise.all(providerResult.routes.map(async (r, i) => {
-        const intelligence = await getRouteIntelligence(r.coords, sourceEn, destEn, r.distKm * 1000);
-        return {
-          id: i,
-          type: r.type,
-          geometry: { type: 'LineString', coordinates: r.coords },
-          distance: Math.round(r.distKm * 1000),
-          duration: Math.round(r.durationH * 3600),
-          summary: r.label,
-          intelligence,
-          vehicle,
-          originPort,
-          destPort,
-          originAirport,
-          destAirport,
-          steps: [],
-        };
-      }));
-      const intelTime = Date.now() - intelStart;
-
-      routeCache.set(snapKey, processedRoutes);
-
-      const totalTime = Date.now() - totalStart;
-      console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
-      console.log(`[ROUTE TIME] duration=${routeTime}ms`);
-      console.log(`[INTELLIGENCE TIME] duration=${intelTime}ms`);
-      console.log(`[TOTAL TIME] duration=${totalTime}ms`);
-      if (isShip) console.log(`[SEA TIME] duration=${totalTime}ms`);
-      else console.log(`[AIR TIME] duration=${totalTime}ms`);
-
-      return res.json({ success: true, routes: processedRoutes });
+      originPort = providerResult.originPort || null;
+      destPort = providerResult.destPort || null;
+      sourceEn = originPort ? `${originPort.name} Port` : sourceEn;
+      destEn = destPort ? `${destPort.name} Port` : destEn;
+      console.log(`[MARITIME] Route: ${sourceEn} → ${destEn} | ${providerResult?.routes?.length || 0} variants`);
+    } else {
+      providerResult = await airRouteProvider.getRoutes({
+        startLat: sLat,
+        startLon: sLon,
+        endLat: eLat,
+        endLon: eLon,
+      });
+      originAirport = providerResult.originAirport || null;
+      destAirport = providerResult.destAirport || null;
+      const originCode = originAirport?.iata || originAirport?.icao || '';
+      const destCode = destAirport?.iata || destAirport?.icao || '';
+      sourceEn = originAirport ? `${originAirport.name}${originCode ? ` (${originCode})` : ''}` : sourceEn;
+      destEn = destAirport ? `${destAirport.name}${destCode ? ` (${destCode})` : ''}` : destEn;
+      console.log(`[AIR] Route: ${sourceEn} → ${destEn} | ${providerResult?.routes?.length || 0} variants`);
     }
 
-    // ── LAND ROUTING via OSRM ────────────────────────────────
-    const cacheKey = `v22-land-${sLat.toFixed(2)}-${sLon.toFixed(2)}-${eLat.toFixed(2)}-${eLon.toFixed(2)}-${vehicle}`;
-    if (routeCache.has(cacheKey)) {
-      const cachedRoutes = routeCache.get(cacheKey);
+    if (!providerResult?.routes || providerResult.routes.length === 0) {
+      throw {
+        status: 404,
+        error: 'No route found',
+        details: `Could not construct route geometry between these coordinates in ${isShip ? 'Sea' : 'Air'} mode.`
+      };
+    }
+
+    const snapKey = isShip
+      ? `v23-sea-${originPort?.wpi || originPort?.name || sLat.toFixed(2)}-${destPort?.wpi || destPort?.name || eLat.toFixed(2)}`
+      : `v23-air-${originAirport?.iata || originAirport?.icao || sLat.toFixed(2)}-${destAirport?.iata || destAirport?.icao || eLat.toFixed(2)}`;
+
+    if (routeCache.has(snapKey)) {
+      const cachedRoutes = routeCache.get(snapKey);
       const routeTime = Date.now() - routeStart;
       const totalTime = Date.now() - totalStart;
       console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
@@ -877,76 +989,145 @@ exports.getDirections = async (req, res) => {
       console.log(`[RISK TIME] duration=0ms`);
       console.log(`[INTELLIGENCE TIME] duration=0ms`);
       console.log(`[TOTAL TIME] duration=${totalTime}ms`);
-      console.log(`[ROAD TIME] duration=${totalTime}ms`);
-      return res.json({ success: true, routes: cachedRoutes });
-    }
-
-    const vehicleProfileMap = { 'car': 'driving', 'bike': 'cycling', 'foot': 'walking', 'bus': 'driving', 'truck': 'driving' };
-    const speedScaleMap     = { 'car': 1, 'bike': 3, 'foot': 8, 'bus': 1.5, 'truck': 1.3 };
-
-    const profile = vehicleProfileMap[vehicle] || 'driving';
-    const scale   = speedScaleMap[vehicle] || 1;
-
-    let paths = await fetchRoutesFromProvider([snappedStart.lat, snappedStart.lng], [snappedEnd.lat, snappedEnd.lng], profile);
-
-    if (!paths || paths.length === 0) {
-      return res.status(404).json({
-        error: 'No route found',
-        details: 'OSRM land routing engine could not find any drivable segments connecting these points.'
-      });
-    }
-
-    // Fill up to 3 route alternatives with via-point offsets
-    if (paths.length < 3 && paths.length > 0) {
-      const primary = paths[0];
-      const distanceKm = (primary.distance || 0) / 1000;
-      const midIdx = Math.floor(primary.geometry.coordinates.length / 2);
-      const mid = primary.geometry.coordinates[midIdx];
-      const offsetScale = distanceKm > 100 ? 0.08 : 0.02;
-      for (const [latOff, lngOff] of [[offsetScale, -offsetScale], [-offsetScale, offsetScale]]) {
-        if (paths.length >= 3) break;
-        try {
-          const vRes = await axios.get(`https://router.project-osrm.org/route/v1/${profile}/${snappedStart.lng},${snappedStart.lat};${mid[0] + lngOff},${mid[1] + latOff};${snappedEnd.lng},${snappedEnd.lat}?geometries=geojson&overview=full`);
-          if (vRes.data.routes?.length > 0 && isUniqueRoute(vRes.data.routes[0], paths)) paths.push(vRes.data.routes[0]);
-        } catch (e) {}
-      }
+      if (isShip) console.log(`[SEA TIME] duration=${totalTime}ms`);
+      else console.log(`[AIR TIME] duration=${totalTime}ms`);
+      return cachedRoutes;
     }
 
     const routeTime = Date.now() - routeStart;
 
     const intelStart = Date.now();
-    processedRoutes = await Promise.all(paths.slice(0, 3).map(async (route, i) => {
-      const intelligence = await getRouteIntelligence(route.geometry.coordinates, sourceEn, destEn, route.distance);
+    processedRoutes = providerResult.routes.map((r, i) => {
+      const intelligence = {};
       return {
         id: i,
-        type: i === 0 ? 'Optimal' : i === 1 ? 'Balanced' : 'Alternative',
-        geometry: route.geometry,
-        distance: route.distance,
-        duration: route.duration * scale,
-        summary: route.legs?.[0]?.summary || 'Primary Roadway',
+        type: r.type,
+        geometry: { type: 'LineString', coordinates: r.coords },
+        distance: Math.round(r.distKm * 1000),
+        duration: Math.round(r.durationH * 3600),
+        summary: r.label,
         intelligence,
         vehicle,
-        steps: route.legs?.[0]?.steps?.map(s => ({ instruction: s.maneuver?.instruction, distance: s.distance })) || [],
+        originPort,
+        destPort,
+        originAirport,
+        destAirport,
+        steps: [],
       };
-    }));
+    });
     const intelTime = Date.now() - intelStart;
 
-    routeCache.set(cacheKey, processedRoutes);
+    routeCache.set(snapKey, processedRoutes);
 
     const totalTime = Date.now() - totalStart;
     console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
     console.log(`[ROUTE TIME] duration=${routeTime}ms`);
     console.log(`[INTELLIGENCE TIME] duration=${intelTime}ms`);
     console.log(`[TOTAL TIME] duration=${totalTime}ms`);
-    console.log(`[ROAD TIME] duration=${totalTime}ms`);
+    if (isShip) console.log(`[SEA TIME] duration=${totalTime}ms`);
+    else console.log(`[AIR TIME] duration=${totalTime}ms`);
 
+    return processedRoutes;
+  }
+
+  // ── LAND ROUTING via OSRM ────────────────────────────────
+  const cacheKey = `v22-land-${sLat.toFixed(2)}-${sLon.toFixed(2)}-${eLat.toFixed(2)}-${eLon.toFixed(2)}-${vehicle}`;
+  if (routeCache.has(cacheKey)) {
+    const cachedRoutes = routeCache.get(cacheKey);
+    const routeTime = Date.now() - routeStart;
+    const totalTime = Date.now() - totalStart;
+    console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
+    console.log(`[ROUTE TIME] duration=${routeTime}ms`);
+    console.log(`[RISK TIME] duration=0ms`);
+    console.log(`[INTELLIGENCE TIME] duration=0ms`);
+    console.log(`[TOTAL TIME] duration=${totalTime}ms`);
+    console.log(`[ROAD TIME] duration=${totalTime}ms`);
+    return cachedRoutes;
+  }
+
+  const vehicleProfileMap = { 'car': 'driving', 'bike': 'cycling', 'foot': 'walking', 'bus': 'driving', 'truck': 'driving' };
+  const speedScaleMap = { 'car': 1, 'bike': 3, 'foot': 8, 'bus': 1.5, 'truck': 1.3 };
+
+  const profile = vehicleProfileMap[vehicle] || 'driving';
+  const scale = speedScaleMap[vehicle] || 1;
+
+  let paths = await fetchRoutesFromProvider([snappedStart.lat, snappedStart.lng], [snappedEnd.lat, snappedEnd.lng], profile);
+
+  if (!paths || paths.length === 0) {
+    throw {
+      status: 404,
+      error: 'No route found',
+      details: 'OSRM land routing engine could not find any drivable segments connecting these points.'
+    };
+  }
+
+  // Fill up to 3 route alternatives with via-point offsets
+  if (paths.length < 3 && paths.length > 0) {
+    const primary = paths[0];
+    const distanceKm = (primary.distance || 0) / 1000;
+    const midIdx = Math.floor(primary.geometry.coordinates.length / 2);
+    const mid = primary.geometry.coordinates[midIdx];
+    const offsetScale = distanceKm > 100 ? 0.08 : 0.02;
+    for (const [latOff, lngOff] of [[offsetScale, -offsetScale], [-offsetScale, offsetScale]]) {
+      if (paths.length >= 3) break;
+      try {
+        const vRes = await axios.get(`https://router.project-osrm.org/route/v1/${profile}/${snappedStart.lng},${snappedStart.lat};${mid[0] + lngOff},${mid[1] + latOff};${snappedEnd.lng},${snappedEnd.lat}?geometries=geojson&overview=full`);
+        if (vRes.data.routes?.length > 0 && isUniqueRoute(vRes.data.routes[0], paths)) paths.push(vRes.data.routes[0]);
+      } catch (e) { }
+    }
+  }
+
+  const routeTime = Date.now() - routeStart;
+
+  const intelStart = Date.now();
+  processedRoutes = paths.slice(0, 3).map((route, i) => {
+    const intelligence = {};
+    return {
+      id: i,
+      type: i === 0 ? 'Optimal' : i === 1 ? 'Balanced' : 'Alternative',
+      geometry: route.geometry,
+      distance: route.distance,
+      duration: route.duration * scale,
+      summary: route.legs?.[0]?.summary || 'Primary Roadway',
+      intelligence,
+      vehicle,
+      steps: route.legs?.[0]?.steps?.map(s => ({ instruction: s.maneuver?.instruction, distance: s.distance })) || [],
+    };
+  });
+  const intelTime = Date.now() - intelStart;
+
+  routeCache.set(cacheKey, processedRoutes);
+
+  const totalTime = Date.now() - totalStart;
+  console.log(`[GEOCODE TIME] duration=${geocodeTime}ms`);
+  console.log(`[ROUTE TIME] duration=${routeTime}ms`);
+  console.log(`[INTELLIGENCE TIME] duration=${intelTime}ms`);
+  console.log(`[TOTAL TIME] duration=${totalTime}ms`);
+  console.log(`[ROAD TIME] duration=${totalTime}ms`);
+
+  return processedRoutes;
+};
+
+exports.computeRouteInternal = computeRouteInternal;
+
+exports.getDirections = async (req, res) => {
+  try {
+    const { startLat, startLng, endLat, endLng, vehicle: rawVehicle = 'driving', sourceName, destName } = req.query;
+    if (!startLat || !startLng || !endLat || !endLng) return res.status(400).json({ error: 'Missing coords' });
+
+    // Log [ROUTE REQUEST]
+    console.log(`[ROUTE REQUEST]\norigin=${sourceName || 'Unknown'}\ndestination=${destName || 'Unknown'}\nmode=${rawVehicle}`);
+
+    const processedRoutes = await computeRouteInternal(startLat, startLng, endLat, endLng, rawVehicle, sourceName, destName);
     return res.json({ success: true, routes: processedRoutes });
   } catch (error) {
     console.error('Directions API error:', error.message);
-    console.error('Directions API stack:', error.stack);
+    if (error.status) {
+      return res.status(error.status).json({ error: error.error, details: error.details });
+    }
     res.status(500).json({ error: 'Routing engine failed', details: error.message });
   }
-};
+};;
 
 exports.searchLocation = async (req, res) => {
   const searchStart = Date.now();
@@ -957,27 +1138,27 @@ exports.searchLocation = async (req, res) => {
     // 1. Production Input Guard (Protocol v39)
     if (!q || q.trim().length < 2) {
       console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
-      return res.json([]); 
+      return res.json([]);
     }
 
     const qLower = q.toLowerCase().trim();
     const cacheKey = `geo-${qLower}-${limit}-${targetMode}`;
-    
+
     // 2. High-Speed Fuzzy Look-Ahead (RAM-First)
     if (geocoderCache.has(cacheKey)) {
-        const cached = geocoderCache.get(cacheKey);
-        console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
-        console.log(`[SEARCH]\nquery=${q}\nresults=${cached.map(r => r.display_name).join(' | ')}`);
-        return res.json(cached);
+      const cached = geocoderCache.get(cacheKey);
+      console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
+      console.log(`[SEARCH]\nquery=${q}\nresults=${cached.map(r => r.display_name).join(' | ')}`);
+      return res.json(cached);
     }
-    
+
     const allKeys = geocoderCache.keys();
     const fuzzyMatch = allKeys.find(k => k.startsWith(`geo-${qLower}-${limit}-${targetMode}`));
     if (fuzzyMatch) {
-       const cached = geocoderCache.get(fuzzyMatch);
-       console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
-       console.log(`[SEARCH]\nquery=${q}\nresults=${cached.map(r => r.display_name).join(' | ')}`);
-       return res.json(cached);
+      const cached = geocoderCache.get(fuzzyMatch);
+      console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
+      console.log(`[SEARCH]\nquery=${q}\nresults=${cached.map(r => r.display_name).join(' | ')}`);
+      return res.json(cached);
     }
 
     // 3. Fallback Chain Execution
@@ -1087,7 +1268,7 @@ exports.searchLocation = async (req, res) => {
   } catch (error) {
     console.error('[SEARCH PROXY CRASH-RECOVERY]:', { query: req.query?.q, message: error.message });
     console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
-    res.status(200).json([]); 
+    res.status(200).json([]);
   }
 };
 
@@ -1097,7 +1278,7 @@ exports.optimizeRoute = async (req, res) => {
   try {
     const { origin, destination, vehicle = 'truck' } = req.body;
     // Fallback if routeOptimizer is missing some logic
-    const optimized = { success: true, missionId: `OPT-${Date.now()}` }; 
+    const optimized = { success: true, missionId: `OPT-${Date.now()}` };
     res.json({ success: true, optimized });
   } catch (error) {
     res.status(500).json({ error: "Optimization Protocol Failed." });
@@ -1106,60 +1287,269 @@ exports.optimizeRoute = async (req, res) => {
 
 exports.analyzeRisk = async (req, res) => {
   try {
-    const { route } = req.body;
-    res.json({ success: true, riskScore: 15, analysis: "Mission corridor stable." });
+    const { origin, destination, mode, routeCoords, distance, duration } = req.body;
+    if (!origin || !destination) {
+      return res.status(400).json({ error: 'Missing origin or destination' });
+    }
+
+    const geoRiskService = require('../services/GeoRiskService');
+
+    // Fetch GeoRisk and Weather in parallel
+    let geoRiskError = null;
+    const [geoRiskResult, weatherReports] = await Promise.all([
+      geoRiskService.analyzeRoute(origin, destination).catch(err => {
+        console.warn(`[analyzeRisk] GeoRiskEngine error: ${err.message}`);
+        geoRiskError = err;
+        return null;
+      }),
+      routeCoords && Array.isArray(routeCoords) ? getWeatherAlongRoute(routeCoords, mode) : Promise.resolve([])
+    ]);
+
+    // Format weather impact
+    let weatherImpact = 'LOW';
+    const hasCriticalWeather = weatherReports.some(w => w.severity === 'CRITICAL');
+    const hasCautionWeather = weatherReports.some(w => w.severity === 'CAUTION');
+    if (hasCriticalWeather) weatherImpact = 'HIGH';
+    else if (hasCautionWeather) weatherImpact = 'MEDIUM';
+
+    if (!geoRiskResult) {
+      let friendlyMessage = 'Risk intelligence temporarily unavailable.';
+      if (geoRiskError && geoRiskError.response) {
+        const status = geoRiskError.response.status;
+        const detail = geoRiskError.response.data?.detail || geoRiskError.response.data?.error || geoRiskError.response.data?.message;
+        if (status === 400 || status === 422) {
+          friendlyMessage = typeof detail === 'string' ? detail : (detail?.message || 'Geocoding or validation failed on risk engine.');
+        }
+      }
+
+      const fallbackReport = {
+        weatherImpact,
+        geopoliticalImpact: 'LOW',
+        affectedRegions: weatherReports.map(w => w.place?.split(',')[0]).filter(Boolean).slice(0, 3),
+        topRisks: ['Geopolitical risk service currently offline.'],
+        operationalRecommendation: hasCriticalWeather ? 'Reroute' : hasCautionWeather ? 'Delay' : 'Proceed',
+        executiveSummary: friendlyMessage
+      };
+
+      return res.json({
+        success: true,
+        isDegraded: true,
+        intelligence: {
+          riskScore: null,
+          safetyScore: null,
+          recommendedMode: null,
+          alertsCount: 0,
+          events: [],
+          zoneIntersections: [],
+          waypointReports: weatherReports,
+          summary: friendlyMessage,
+          severity: 'UNKNOWN',
+          aiReport: fallbackReport
+        }
+      });
+    }
+
+    // Map RouteGuardian transport mode to GEO_RISK_ENGINE mode keys
+    const MODE_MAP = { ship: 'sea', air: 'air', truck: 'road' };
+    const engineMode = MODE_MAP[mode] || 'road';
+
+    const modeResult = geoRiskResult.modes[engineMode];
+    const allEvents = modeResult?.events || [];
+    const filteredEvents = allEvents.filter(isThreat);
+
+    const riskScore = modeResult?.risk_score != null ? Math.round(modeResult.risk_score * 100) : null;
+    const safetyScore = modeResult?.safety_score != null ? Math.round(modeResult.safety_score * 100) : null;
+
+    // Determine Geopolitical Impact
+    let geopoliticalImpact = 'LOW';
+    if (riskScore != null) {
+      if (riskScore >= 65) geopoliticalImpact = 'HIGH';
+      else if (riskScore >= 35) geopoliticalImpact = 'MEDIUM';
+    }
+
+    // Operational recommendation fallback
+    let operationalRecommendation = 'Proceed';
+    if (riskScore != null) {
+      if (riskScore >= 65 || hasCriticalWeather) operationalRecommendation = 'Reroute';
+      else if (riskScore >= 35 || hasCautionWeather) operationalRecommendation = 'Delay';
+    }
+
+    // ── Generate AI Executive Report using Gemini ──
+    let aiReport = null;
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const prompt = `You are a logistics risk analyst AI. Generate a structured AI Route Intelligence Report.
+Origin: ${origin}
+Destination: ${destination}
+Transport Mode: ${mode}
+Distance: ${distance ? distance + ' meters' : 'N/A'}
+Duration/ETA: ${duration ? duration + ' seconds' : 'N/A'}
+Risk Score: ${riskScore ?? 'N/A'}/100
+Safety Score: ${safetyScore ?? 'N/A'}/100
+Weather Impact Info: ${JSON.stringify(weatherReports)}
+Incidents: ${JSON.stringify(filteredEvents.map(e => ({ headline: e.headline, publisher: e.publisher, intensity: e.intensity })))}
+
+Generate a JSON object matching this schema (do not include markdown syntax or extra text):
+{
+  "weatherImpact": "LOW" | "MEDIUM" | "HIGH",
+  "geopoliticalImpact": "LOW" | "MEDIUM" | "HIGH",
+  "affectedRegions": ["Region/City 1", "Region/City 2", ...],
+  "topRisks": ["Risk 1", "Risk 2", "Risk 3"],
+  "operationalRecommendation": "Proceed" | "Delay" | "Reroute",
+  "executiveSummary": "3-5 sentence AI-generated report summary explaining the current risk situation, weather impact, and operational recommendation."
+}`;
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const match = text.match(/\{[\s\S]*?\}/);
+        if (match) {
+          aiReport = JSON.parse(match[0]);
+        }
+      } catch (err) {
+        console.warn('[analyzeRisk] Gemini report generation failed:', err.message);
+      }
+    }
+
+    if (!aiReport) {
+      // Build programmatic fallback report
+      const affectedRegions = weatherReports.map(w => w.place?.split(',')[0]).filter(Boolean).slice(0, 3);
+      const topRisks = [];
+      if (filteredEvents.length > 0) {
+        filteredEvents.slice(0, 3).forEach(e => {
+          if (e.headline) topRisks.push(e.headline);
+        });
+      }
+      if (topRisks.length < 3 && hasCriticalWeather) {
+        topRisks.push('Severe weather disruption detected along transit route.');
+      }
+      if (topRisks.length === 0) {
+        topRisks.push('No immediate major geopolitical threats reported.');
+      }
+
+      aiReport = {
+        weatherImpact,
+        geopoliticalImpact,
+        affectedRegions,
+        topRisks: topRisks.slice(0, 3),
+        operationalRecommendation,
+        executiveSummary: `The transit corridor from ${origin.split(',')[0]} to ${destination.split(',')[0]} is currently evaluated with a geopolitical risk score of ${riskScore ?? 'N/A'}/100 and a safety score of ${safetyScore ?? 'N/A'}/100. Geopolitical impact is rated as ${geopoliticalImpact} with ${filteredEvents.length} active threat incidents. Weather conditions along the route pose a ${weatherImpact.toLowerCase()} impact. Based on these conditions, operators are advised to ${operationalRecommendation.toLowerCase()} with caution.`
+      };
+    }
+
+    // Expose direct data from GEO_RISK_ENGINE
+    const intelligence = {
+      riskScore,
+      safetyScore,
+      recommendedMode: geoRiskResult.recommended_mode,
+      alertsCount: filteredEvents.length,
+      events: filteredEvents,
+      zoneIntersections: modeResult?.zone_intersections || [],
+      waypointReports: weatherReports,
+      summary: modeResult?.message || `Corridor risk evaluated as ${modeResult?.status || 'STABLE'}.`,
+      severity: modeResult?.status || 'STABLE',
+      analyzedAt: geoRiskResult.analyzed_at,
+      aiReport
+    };
+
+    res.json({ success: true, intelligence });
   } catch (error) {
-    res.status(500).json({ error: "Risk Analysis Offline." });
+    console.error('analyzeRisk error:', error.message);
+    res.status(500).json({ error: 'Risk Analysis Offline.', details: error.message });
   }
 };
 
 exports.createShipment = async (req, res) => {
   try {
-    const { origin, destination, cargo, routeData } = req.body;
-    // Database-aware storage (Graceful fallback if DB degraded)
-    let shipment;
-    try {
-      const { prisma } = require('../utils/dbConnector');
-      shipment = { 
-        trackingId: `RG-${Math.random().toString(36).substring(7).toUpperCase()}`, 
-        origin, destination, status: 'INITIALIZED',
-        createdAt: new Date().toISOString()
-      };
-    } catch (dbErr) {
-      shipment = { trackingId: `RG-TEMP-${Date.now()}`, origin, destination, status: 'EPHEMERAL' };
-    }
-    
+    const {
+      origin, destination, mode, distance, eta, riskScore, safetyScore, routeGeometry,
+      cargo, priority, date, time, weatherSummary, riskSummary, aiReport
+    } = req.body;
+    const { prisma } = require('../utils/dbConnector');
+
+    const shipment = await prisma.shipment.create({
+      data: {
+        origin,
+        destination,
+        mode,
+        distance: parseFloat(distance) || 0,
+        eta: parseFloat(eta) || 0,
+        riskScore: riskScore != null ? parseFloat(riskScore) : null,
+        safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
+        routeGeometry: routeGeometry, // stores GeoJSON natively
+        cargo: cargo || null,
+        priority: priority || null,
+        date: date || null,
+        time: time || null,
+        weatherSummary: weatherSummary || null,
+        riskSummary: riskSummary || null,
+        aiReport: typeof aiReport === 'object' ? JSON.stringify(aiReport) : (aiReport || null),
+        status: 'active'
+      }
+    });
+
     res.json({ success: true, shipment });
   } catch (error) {
-    res.status(500).json({ error: "Mission Logic Error: Shipment construction failed." });
+    console.error('[createShipment] Error:', error.message);
+    res.status(500).json({ error: "Shipment construction failed." });
+  }
+};
+
+exports.getShipments = async (req, res) => {
+  try {
+    const { prisma } = require('../utils/dbConnector');
+    const shipments = await prisma.shipment.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ success: true, shipments });
+  } catch (error) {
+    console.error('[getShipments] Error:', error.message);
+    res.status(500).json({ error: "Telemetry Retrieval Failed." });
   }
 };
 
 exports.getShipment = async (req, res) => {
   try {
     const { id } = req.params;
-    res.json({ success: true, shipment: { id, status: 'IN_TRANSIT' } });
+    const { prisma } = require('../utils/dbConnector');
+    const shipment = await prisma.shipment.findUnique({
+      where: { id }
+    });
+    if (!shipment) {
+      return res.status(404).json({ success: false, error: "Shipment not found." });
+    }
+    res.json({ success: true, shipment });
   } catch (error) {
+    console.error('[getShipment] Error:', error.message);
     res.status(500).json({ error: "Telemetry Retrieval Failed." });
   }
 };
 
 exports.getAlerts = async (req, res) => {
   try {
-    // Return global risk zone intelligence as a live threat feed
-    const threats = GLOBAL_RISK_ZONES.map(z => ({
-      id: z.id,
-      title: z.name,
-      type: z.type,
-      severity: z.baselineSeverity,
-      reason: z.reason,
-      lat: z.lat,
-      lon: z.lon,
-      radiusKm: z.radiusKm,
-      timestamp: new Date().toISOString(),
+    const geoRiskService = require('../services/GeoRiskService');
+    const events = await geoRiskService.getLiveIncidents();
+
+    const filteredEvents = events.filter(isThreat);
+
+    const alerts = filteredEvents.map((e, idx) => ({
+      id: e.id || `alert-${idx}-${Date.now()}`,
+      title: e.headline,
+      severity: e.intensity >= 0.5 ? 'CRITICAL' : e.intensity >= 0.25 ? 'HIGH' : 'MODERATE',
+      category: e.label,
+      country: e.zone || 'Global waters/transit',
+      published: e.published_at,
+      source: e.publisher,
+      source_url: e.source_url,
+      image_url: e.image_url,
+      lat: e.location ? e.location[0] : null,
+      lon: e.location ? e.location[1] : null,
+      confidence: e.confidence,
+      intensity: e.intensity
     }));
-    res.json({ success: true, alerts: threats, count: threats.length });
+
+    res.json({ success: true, alerts, count: alerts.length });
   } catch (error) {
+    console.error('[getAlerts] Error:', error.message);
     res.status(500).json({ error: "Risk Feed Offline." });
   }
 };
@@ -1209,8 +1599,6 @@ exports.resolvePort = async (req, res) => {
     res.status(500).json({ error: 'Port resolution failed' });
   }
 };
-
-// ── Airport Resolver — returns nearest airports + fuzzy name matching ─────────
 exports.resolveAirport = async (req, res) => {
   try {
     const lat = parseFloat(req.query.lat);
@@ -1234,11 +1622,6 @@ exports.resolveAirport = async (req, res) => {
 };
 
 const getDeterministicRecommendation = (routes) => {
-  // Score each route: lower score is better
-  // Weight factors:
-  // - Distance: 1 point per km
-  // - Duration: 10 points per hour (3600 seconds)
-  // - Risk Score: 15 points per point of risk (15x riskScore)
   let bestIndex = 0;
   let bestScore = Infinity;
 
@@ -1280,13 +1663,13 @@ exports.compareRoutes = async (req, res) => {
     if (cached) return res.json({ success: true, recommendation: cached });
 
     const summaries = routes.map((r, i) => {
-      const distKm   = Math.round((r.distance || 0) / 1000);
-      const durDays  = ((r.duration || 0) / 86400).toFixed(1);
-      const durHrs   = ((r.duration || 0) / 3600).toFixed(1);
-      const score    = r.intelligence?.riskScore || 0;
-      const sev      = r.intelligence?.severity || 'STABLE';
-      const zones    = r.intelligence?.riskZones?.map(z => z.name).join(', ') || 'none';
-      const dur      = distKm > 2000 ? `${durDays} days` : `${durHrs} hrs`;
+      const distKm = Math.round((r.distance || 0) / 1000);
+      const durDays = ((r.duration || 0) / 86400).toFixed(1);
+      const durHrs = ((r.duration || 0) / 3600).toFixed(1);
+      const score = r.intelligence?.riskScore || 0;
+      const sev = r.intelligence?.severity || 'STABLE';
+      const zones = r.intelligence?.riskZones?.map(z => z.name).join(', ') || 'none';
+      const dur = distKm > 2000 ? `${durDays} days` : `${durHrs} hrs`;
       return `Route ${i + 1} "${r.summary || `Option ${i + 1}`}": ${distKm} km, ${dur} transit, Risk ${score}/100 (${sev}), Threat zones: ${zones}`;
     }).join('\n');
 
@@ -1337,3 +1720,31 @@ exports.compareRoutes = async (req, res) => {
     }
   }
 };
+
+exports.clearShipments = async (req, res) => {
+  try {
+    const { prisma } = require('../utils/dbConnector');
+    await prisma.shipment.deleteMany({});
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[clearShipments] Error:', error.message);
+    res.status(500).json({ error: "Failed to clear shipments." });
+  }
+};
+
+exports.deleteShipment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prisma } = require('../utils/dbConnector');
+    await prisma.shipment.delete({
+      where: { id }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[deleteShipment] Error:', error.message);
+    res.status(500).json({ error: "Failed to delete shipment." });
+  }
+};
+
+exports.getWeatherAlongRoute = getWeatherAlongRoute;
+

@@ -4,12 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   User, Shield, Trash2, AlertCircle, Save, Sun, Moon, Monitor,
-  Camera, Phone, Calendar, MapPin, Globe, Bell, BellOff, Loader2,
+  Camera, Phone, Calendar, MapPin, Globe, Loader2,
   Lock, Palette, CheckCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getToken } from 'firebase/messaging';
-import { messaging } from '../lib/push/firebaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
@@ -17,7 +15,6 @@ const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 const SECTIONS = [
   { id: 'appearance',    label: 'Appearance',    Icon: Palette  },
   { id: 'profile',       label: 'Profile',       Icon: User     },
-  { id: 'notifications', label: 'Notifications', Icon: Bell     },
   { id: 'security',      label: 'Security',      Icon: Lock     },
 ];
 
@@ -43,15 +40,12 @@ const SettingsPage = () => {
   });
 
   const [updateLoading, setUpdateLoading] = useState(false);
-  const [pushLoading, setPushLoading]     = useState(false);
   const [profileImageFile, setProfileImageFile] = useState(null);
   const [profilePreview, setProfilePreview]     = useState(user?.profileImage || '');
-  const [pushEnabled, setPushEnabled]     = useState(false);
   const [activeSection, setActiveSection] = useState('appearance');
 
   useEffect(() => {
     if (window.__applyTheme) window.__applyTheme('dark');
-    if ('Notification' in window) setPushEnabled(Notification.permission === 'granted');
     return () => {
       if (profilePreview?.startsWith('blob:')) URL.revokeObjectURL(profilePreview);
     };
@@ -87,38 +81,7 @@ const SettingsPage = () => {
     }
   };
 
-  const enablePush = async () => {
-    setPushLoading(true);
-    try {
-      if (!('Notification' in window)) { toast.error('Browser does not support notifications'); return; }
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') { toast.error('Notification permission denied'); return; }
-      const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-      if (!vapidKey) { toast.error('Push notifications not configured'); return; }
-      const fcmToken = await getToken(messaging, { vapidKey });
-      if (!fcmToken) { toast.error('Failed to generate push token'); return; }
-      const res = await axios.post(`${BASE_URL}/api/user/notifications/push-token`,
-        { token: fcmToken, platform: 'WEB' }, { withCredentials: true });
-      if (res.data?.success) { toast.success('Push notifications enabled'); setPushEnabled(true); }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to enable push');
-    } finally {
-      setPushLoading(false);
-    }
-  };
 
-  const disablePush = async () => {
-    setPushLoading(true);
-    try {
-      await axios.delete(`${BASE_URL}/api/user/notifications/push-token`, { withCredentials: true });
-      toast.success('Push notifications disabled');
-      setPushEnabled(false);
-    } catch {
-      toast.error('Failed to disable push');
-    } finally {
-      setPushLoading(false);
-    }
-  };
 
   const handleAccountAction = async (type) => {
     const msg = type === 'permanent'
@@ -311,108 +274,7 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {/* NOTIFICATIONS */}
-            {activeSection === 'notifications' && (
-              <motion.div key="notifications" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                style={card}>
-                <div style={cardHeader}>
-                  <h2 className="text-base font-bold" style={{ color: '#F9FAFB' }}>Push Notifications</h2>
-                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
-                    Receive real-time alerts for risk events, route changes, and system status.
-                  </p>
-                </div>
-                <div className="p-6">
-                  <div className="flex items-start justify-between gap-4 p-4 rounded-xl" style={{ background: '#0B1220', border: '1px solid #374151' }}>
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0"
-                        style={{
-                          background: pushEnabled ? '#22C55E' : '#374151',
-                          boxShadow: pushEnabled ? '0 0 8px rgba(34,197,94,0.5)' : 'none',
-                        }}
-                      />
-                      <div>
-                        <p className="text-sm font-bold" style={{ color: '#F9FAFB' }}>
-                          {pushEnabled ? 'Notifications active' : 'Notifications disabled'}
-                        </p>
-                        <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                          {pushEnabled
-                            ? 'You will receive real-time supply chain alerts on this device.'
-                            : 'Enable push notifications to receive risk and route alerts.'}
-                        </p>
-                      </div>
-                    </div>
-                    {pushEnabled ? (
-                      <button
-                        onClick={disablePush}
-                        disabled={pushLoading}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex-shrink-0"
-                        style={{ background: '#374151', color: '#9CA3AF', border: '1px solid #374151' }}
-                        onMouseEnter={e => e.currentTarget.style.color = '#F9FAFB'}
-                        onMouseLeave={e => e.currentTarget.style.color = '#9CA3AF'}
-                      >
-                        {pushLoading ? <Loader2 size={13} className="animate-spin" /> : <BellOff size={13} />}
-                        Disable
-                      </button>
-                    ) : (
-                      <button
-                        onClick={enablePush}
-                        disabled={pushLoading}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex-shrink-0"
-                        style={{ background: '#3B82F6', color: '#fff' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#2563EB'}
-                        onMouseLeave={e => e.currentTarget.style.background = '#3B82F6'}
-                      >
-                        {pushLoading ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />}
-                        Enable
-                      </button>
-                    )}
-                  </div>
 
-                  <div className="mt-4 p-4 rounded-xl" style={{ background: '#0B1220', border: '1px solid #374151' }}>
-                    <p className="text-xs leading-relaxed" style={{ color: '#6B7280' }}>
-                      Push notifications require browser permission. RouteGuardian uses Firebase Cloud Messaging (FCM)
-                      to deliver alerts. Notifications include risk alerts, weather warnings, and geopolitical event updates.
-                    </p>
-                  </div>
-
-                  {/* Alert type toggles */}
-                  <div className="mt-4 space-y-2">
-                    <p className="text-xs font-bold mb-3" style={{ color: '#6B7280' }}>Alert Categories</p>
-                    {[
-                      { label: 'Risk Alerts',       desc: 'Geopolitical threats, conflict zones',    color: '#EF4444', enabled: true  },
-                      { label: 'Weather Warnings',   desc: 'Severe weather along active routes',      color: '#F59E0B', enabled: true  },
-                      { label: 'Route Updates',      desc: 'Congestion, port closures, delays',       color: '#3B82F6', enabled: true  },
-                      { label: 'System Alerts',      desc: 'Platform maintenance, security notices',  color: '#38BDF8', enabled: false },
-                    ].map(({ label, desc, color, enabled }) => (
-                      <div
-                        key={label}
-                        className="flex items-center justify-between p-3 rounded-xl"
-                        style={{ background: '#0B1220', border: '1px solid #374151' }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                          <div>
-                            <p className="text-sm font-semibold" style={{ color: '#F9FAFB' }}>{label}</p>
-                            <p className="text-xs" style={{ color: '#6B7280' }}>{desc}</p>
-                          </div>
-                        </div>
-                        <div
-                          className="w-10 h-5 rounded-full flex items-center transition-all cursor-pointer"
-                          style={{
-                            background: enabled ? '#3B82F6' : '#374151',
-                            padding: '2px',
-                            justifyContent: enabled ? 'flex-end' : 'flex-start',
-                          }}
-                        >
-                          <div className="w-4 h-4 rounded-full" style={{ background: '#fff' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            )}
 
             {/* SECURITY */}
             {activeSection === 'security' && (

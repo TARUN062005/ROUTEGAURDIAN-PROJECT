@@ -1,12 +1,66 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
+import toast from 'react-hot-toast';
 import { loadRouteHistory, clearRouteHistory } from '../components/RoutyChatPanel';
 import {
   Anchor, Plane, Truck, ChevronRight, Trash2,
   Package, MapPin, Clock, Shield, AlertTriangle, RefreshCw,
   ArrowRight, Activity,
 } from 'lucide-react';
+
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
+  if (!isOpen) return null;
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.6 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+        />
+        {/* Card */}
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          className="relative w-full max-w-md p-6 rounded-[24px] bg-slate-900 border border-slate-800 shadow-2xl text-white z-10 animate-fade-in"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 flex-shrink-0">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">Delete Shipment?</h3>
+              <p className="text-xs text-slate-400 mt-0.5">This action cannot be undone.</p>
+            </div>
+          </div>
+          <p className="text-sm text-slate-300 mb-6 leading-relaxed">
+            Are you sure you want to permanently delete the shipment from <span className="font-bold text-white">{itemName}</span>?
+          </p>
+          <div className="flex items-center justify-end gap-2.5">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-white/5 border border-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all bg-red-600 hover:bg-red-500 text-white"
+            >
+              Delete
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+};
 
 const MODE_ICONS  = { sea: Anchor, ship: Anchor, air: Plane, truck: Truck, road: Truck };
 const MODE_COLORS = { sea: '#00C2FF', ship: '#00C2FF', air: '#00C2FF', truck: '#00C2FF', road: '#00C2FF' };
@@ -40,24 +94,104 @@ const ShipmentsPage = () => {
   const [routes, setRoutes]   = useState([]);
   const [selected, setSelected] = useState(null);
   const [filter, setFilter]   = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [shipmentToDelete, setShipmentToDelete] = useState(null);
 
-  useEffect(() => {
-    setRoutes(loadRouteHistory());
+  const handleDeleteShipment = useCallback(async () => {
+    if (!shipmentToDelete) return;
+    try {
+      const res = await axios.delete(`/api/ai/shipment/${shipmentToDelete.id}`);
+      if (res.data?.success) {
+        setRoutes(prev => prev.filter(r => r.id !== shipmentToDelete.id));
+        if (selected === shipmentToDelete.id) {
+          setSelected(null);
+        }
+        setDeleteModalOpen(false);
+        setShipmentToDelete(null);
+        toast.success("Shipment deleted successfully");
+      } else {
+        toast.error(res.data?.message || "Failed to delete shipment");
+      }
+    } catch (err) {
+      console.error('[ShipmentsPage] Error deleting shipment:', err.message);
+      toast.error("Failed to delete shipment");
+    }
+  }, [shipmentToDelete, selected]);
+
+  const fetchShipments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get('/api/ai/shipments');
+      if (res.data?.success) {
+        setRoutes(res.data.shipments.map(s => ({
+          id: s.id,
+          origin: s.origin,
+          destination: s.destination,
+          mode: s.mode === 'road' ? 'truck' : s.mode === 'sea' ? 'ship' : 'air',
+          distance: s.distance,
+          eta: s.eta,
+          riskScore: s.riskScore,
+          safetyScore: s.safetyScore,
+          routeGeometry: s.routeGeometry,
+          timestamp: new Date(s.createdAt).getTime(),
+          severity: s.riskScore >= 68 ? 'CRITICAL' : s.riskScore >= 35 ? 'CAUTION' : 'STABLE',
+          cargo: s.cargo,
+          priority: s.priority,
+          date: s.date,
+          time: s.time,
+          weatherSummary: s.weatherSummary,
+          riskSummary: s.riskSummary,
+          aiReport: s.aiReport
+        })));
+      }
+    } catch (err) {
+      console.error('[ShipmentsPage] Error fetching shipments:', err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleClear = useCallback(() => {
-    clearRouteHistory();
-    setRoutes([]);
-    setSelected(null);
+  useEffect(() => {
+    fetchShipments();
+  }, [fetchShipments]);
+
+  const handleClear = useCallback(async () => {
+    if (!window.confirm("Are you sure you want to clear all shipment logs?")) return;
+    try {
+      const res = await axios.delete('/api/ai/shipments');
+      if (res.data?.success) {
+        setRoutes([]);
+        setSelected(null);
+      }
+    } catch (err) {
+      console.error('[ShipmentsPage] Error clearing shipments:', err.message);
+    }
   }, []);
 
   const handleRefresh = useCallback(() => {
-    setRoutes(loadRouteHistory());
-  }, []);
+    fetchShipments();
+  }, [fetchShipments]);
 
   const handleOpenRoute = useCallback((r) => {
     // Store selected route in sessionStorage so Dashboard can pick it up
-    sessionStorage.setItem('pendingRoute', JSON.stringify(r));
+    sessionStorage.setItem('pendingRoute', JSON.stringify({
+      origin: r.origin,
+      destination: r.destination,
+      mode: r.mode === 'truck' ? 'road' : r.mode === 'ship' ? 'sea' : 'air',
+      distance: r.distance,
+      eta: r.eta,
+      riskScore: r.riskScore,
+      safetyScore: r.safetyScore,
+      routeGeometry: r.routeGeometry,
+      cargo: r.cargo,
+      priority: r.priority,
+      date: r.date,
+      time: r.time,
+      weatherSummary: r.weatherSummary,
+      riskSummary: r.riskSummary,
+      aiReport: r.aiReport
+    }));
     navigate('/dashboard');
   }, [navigate]);
 
@@ -316,15 +450,28 @@ const ShipmentsPage = () => {
                                 </div>
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleOpenRoute(r)}
-                              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0"
-                              style={{ background: '#3B82F6', color: '#fff' }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#2563EB'}
-                              onMouseLeave={e => e.currentTarget.style.background = '#3B82F6'}
-                            >
-                              Open on Map <ArrowRight size={12} />
-                            </button>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShipmentToDelete(r);
+                                  setDeleteModalOpen(true);
+                                }}
+                                className="flex items-center justify-center p-2 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
+                                title="Delete Shipment"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                              <button
+                                onClick={() => handleOpenRoute(r)}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                                style={{ background: '#3B82F6', color: '#fff' }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#2563EB'}
+                                onMouseLeave={e => e.currentTarget.style.background = '#3B82F6'}
+                              >
+                                View on Map <ArrowRight size={12} />
+                              </button>
+                            </div>
                           </div>
                         </motion.div>
                       )}
@@ -336,6 +483,13 @@ const ShipmentsPage = () => {
           </div>
         )}
       </div>
+
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => { setDeleteModalOpen(false); setShipmentToDelete(null); }}
+        onConfirm={handleDeleteShipment}
+        itemName={`${shipmentToDelete?.origin?.split(',')[0] || 'Unknown'} to ${shipmentToDelete?.destination?.split(',')[0] || 'Unknown'}`}
+      />
     </div>
   );
 };

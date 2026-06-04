@@ -6,8 +6,6 @@ import App from "./App.jsx";
 import { AuthProvider } from "./lib/auth/hooks/useAuth";
 import "./index.css";
 
-import { registerFCMServiceWorker } from "./lib/push/registerServiceWorker";
-registerFCMServiceWorker();
 
 const applyTheme = (themeId) => {
   const html = document.documentElement;

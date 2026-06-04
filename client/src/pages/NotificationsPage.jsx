@@ -3,24 +3,17 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bell, Loader2, ShieldAlert, Megaphone, CheckCircle,
-  AlertTriangle, Mail, ExternalLink, Clock, X, Filter,
-  AlertCircle, RefreshCw,
+  Bell, Loader2, ShieldAlert, AlertTriangle, AlertCircle,
+  Clock, ExternalLink, Globe, RefreshCw, Search, X,
+  FileText, MapPin, Filter
 } from "lucide-react";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "";
 
-const TYPE_CONFIG = {
-  SECURITY:     { icon: ShieldAlert,  color: "#EF4444", bg: "rgba(239,68,68,0.12)",    label: "Security"     },
-  ANNOUNCEMENT: { icon: Megaphone,    color: "#A78BFA", bg: "rgba(167,139,250,0.12)",  label: "Announcement" },
-  MARKETING:    { icon: Mail,         color: "#22C55E", bg: "rgba(34,197,94,0.12)",    label: "Marketing"    },
-  SYSTEM:       { icon: Bell,         color: "#38BDF8", bg: "rgba(56,189,248,0.12)",   label: "System"       },
-};
-
-const PRIORITY_CONFIG = {
-  URGENT: { color: "#EF4444", bg: "rgba(239,68,68,0.15)",   border: "rgba(239,68,68,0.35)"   },
-  HIGH:   { color: "#F59E0B", bg: "rgba(245,158,11,0.15)",  border: "rgba(245,158,11,0.35)"  },
-  NORMAL: { color: "#38BDF8", bg: "rgba(56,189,248,0.12)",  border: "rgba(56,189,248,0.25)"  },
+const SEV_CONFIG = {
+  CRITICAL: { icon: ShieldAlert,  color: "#EF4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.3)" },
+  HIGH:     { icon: AlertTriangle, color: "#F59E0B", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.3)" },
+  MODERATE: { icon: AlertCircle,   color: "#38BDF8", bg: "rgba(56,189,248,0.12)",  border: "rgba(56,189,248,0.3)"  },
 };
 
 const formatDate = (dateString) => {
@@ -40,79 +33,94 @@ const formatDate = (dateString) => {
 };
 
 const NotificationsPage = () => {
-  const [loading, setLoading]         = useState(true);
-  const [markingRead, setMarkingRead] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [openNotif, setOpenNotif]     = useState(null);
-  const [stats, setStats]             = useState({ total: 0, unread: 0, read: 0 });
-  const [filters, setFilters]         = useState({ type: "all", priority: "all" });
+  const [loading, setLoading] = useState(true);
+  const [alerts, setAlerts] = useState([]);
+  const [openAlert, setOpenAlert] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSeverity, setSelectedSeverity] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
 
-  const fetchNotifications = async () => {
+  const fetchAlerts = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filters.type !== "all") params.append("type", filters.type);
-      if (filters.priority !== "all") params.append("priority", filters.priority);
-      const res = await axios.get(`${BASE_URL}/api/user/notifications?${params}`, { withCredentials: true });
+      const res = await axios.get(`${BASE_URL}/api/ai/alerts`, { withCredentials: true });
       if (res.data?.success) {
-        const list = res.data.notifications || [];
-        setNotifications(list);
-        setStats({
-          total: res.data.total || list.length,
-          unread: list.filter(n => !n.isRead).length,
-          read: list.filter(n => n.isRead).length,
-        });
+        setAlerts(res.data.alerts || []);
+      } else {
+        toast.error("Failed to load live risk feed");
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to load notifications");
+      toast.error(err.response?.data?.message || "Failed to load live risk feed");
     } finally {
       setLoading(false);
     }
   };
 
-  const markAllRead = async () => {
-    try {
-      setMarkingRead(true);
-      await axios.patch(`${BASE_URL}/api/user/notifications/read-all`, {}, { withCredentials: true });
-      toast.success("All marked as read");
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setStats(prev => ({ ...prev, unread: 0, read: prev.total }));
-    } catch {
-      toast.error("Failed to mark all as read");
-    } finally {
-      setMarkingRead(false);
-    }
-  };
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
 
-  const markOneRead = async (id) => {
-    try {
-      await axios.patch(`${BASE_URL}/api/user/notifications/${id}/read`, {}, { withCredentials: true });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-      setStats(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1), read: prev.read + 1 }));
-    } catch (err) {
-      console.error("Failed to mark as read:", err);
-    }
-  };
+  // Compute dynamic categories
+  const categories = useMemo(() => {
+    const cats = new Set();
+    alerts.forEach((a) => {
+      if (a.category) {
+        cats.add(a.category.toLowerCase());
+      }
+    });
+    return Array.from(cats);
+  }, [alerts]);
 
-  useEffect(() => { fetchNotifications(); }, [filters]);
+  // Filtered alerts
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter((a) => {
+      // 1. Search Query
+      const matchQuery =
+        !searchQuery.trim() ||
+        a.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.country?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.source?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // 2. Severity
+      const matchSeverity =
+        selectedSeverity === "all" ||
+        a.severity?.toUpperCase() === selectedSeverity.toUpperCase();
+
+      // 3. Category
+      const matchCategory =
+        selectedCategory === "all" ||
+        a.category?.toLowerCase() === selectedCategory.toLowerCase();
+
+      return matchQuery && matchSeverity && matchCategory;
+    });
+  }, [alerts, searchQuery, selectedSeverity, selectedCategory]);
+
+  // Compute stats
+  const stats = useMemo(() => {
+    let total = alerts.length;
+    let critical = alerts.filter((a) => a.severity === "CRITICAL").length;
+    let high = alerts.filter((a) => a.severity === "HIGH").length;
+    let moderate = alerts.filter((a) => a.severity === "MODERATE").length;
+    return { total, critical, high, moderate };
+  }, [alerts]);
 
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: "#3B82F6" }}>
-            Inbox
+          <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: "#00C2FF" }}>
+            INTELLIGENCE FEED
           </p>
-          <h1 className="text-2xl font-black" style={{ color: "#F9FAFB" }}>Risk Alerts</h1>
+          <h1 className="text-2xl font-black" style={{ color: "#F9FAFB" }}>Global Risk Alerts</h1>
           <p className="text-sm mt-0.5" style={{ color: "#6B7280" }}>
-            Real-time security, route, and supply chain notifications
+            Real-time global logistics threats aggregated from the live GEO_RISK_ENGINE feed
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchNotifications}
+            onClick={fetchAlerts}
             className="p-2 rounded-xl transition-all"
             style={{ color: "#6B7280", background: "#1F2937", border: "1px solid #374151" }}
             onMouseEnter={e => e.currentTarget.style.color = "#F9FAFB"}
@@ -120,97 +128,105 @@ const NotificationsPage = () => {
           >
             <RefreshCw size={15} />
           </button>
-          {stats.unread > 0 && (
-            <button
-              onClick={markAllRead}
-              disabled={markingRead}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-              style={{ background: "rgba(59,130,246,0.15)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.3)" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(59,130,246,0.25)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
-            >
-              {markingRead ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-              Mark all read
-            </button>
-          )}
         </div>
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total",  value: stats.total,  color: "#9CA3AF", bg: "#1F2937"                     },
-          { label: "Unread", value: stats.unread, color: "#EF4444", bg: "rgba(239,68,68,0.1)"         },
-          { label: "Read",   value: stats.read,   color: "#22C55E", bg: "rgba(34,197,94,0.1)"         },
+          { label: "Total Incidents", value: stats.total, color: "#9CA3AF", bg: "#1F2937" },
+          { label: "Critical Severity", value: stats.critical, color: "#EF4444", bg: "rgba(239,68,68,0.1)" },
+          { label: "High Severity", value: stats.high, color: "#F59E0B", bg: "rgba(245,158,11,0.1)" },
+          { label: "Moderate Severity", value: stats.moderate, color: "#38BDF8", bg: "rgba(56,189,248,0.1)" },
         ].map(({ label, value, color, bg }) => (
-          <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: bg, border: "1px solid #374151" }}>
+          <div key={label} className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: bg, border: "1px solid #374151" }}>
+            <p className="text-xs font-semibold truncate" style={{ color: "#9CA3AF" }}>{label}</p>
             <p className="text-2xl font-black" style={{ color }}>{value}</p>
-            <p className="text-xs font-semibold" style={{ color: "#6B7280" }}>{label}</p>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Filter size={13} style={{ color: "#6B7280" }} />
-          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#6B7280" }}>Filter</span>
-        </div>
-
-        <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#1F2937" }}>
-          {["all", "SYSTEM", "SECURITY", "ANNOUNCEMENT", "MARKETING"].map(t => (
-            <button
-              key={t}
-              onClick={() => setFilters(f => ({ ...f, type: t }))}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+      {/* Filters & Search controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 rounded-xl" style={{ background: "#1F2937", border: "1px solid #374151" }}>
+        
+        {/* Left Side: Search & Filter icon */}
+        <div className="flex items-center gap-3 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: "#6B7280" }} />
+            <input
+              type="text"
+              placeholder="Search incidents by location, title, or source..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-[#00C2FF]"
               style={{
-                background: filters.type === t ? "#374151" : "transparent",
-                color: filters.type === t ? "#F9FAFB" : "#6B7280",
+                background: "#111827",
+                border: "1px solid #374151",
+                color: "#F9FAFB"
+              }}
+            />
+          </div>
+          
+          {/* Category Dropdown */}
+          <div className="relative flex items-center">
+            <Filter size={13} className="absolute left-3" style={{ color: "#6B7280" }} />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="appearance-none pl-8 pr-8 py-2 rounded-xl text-xs font-bold transition-all focus:outline-none focus:ring-1 focus:ring-[#00C2FF] cursor-pointer"
+              style={{
+                background: "#111827",
+                border: "1px solid #374151",
+                color: "#F9FAFB"
               }}
             >
-              {t === "all" ? "All Types" : t.charAt(0) + t.slice(1).toLowerCase()}
-            </button>
-          ))}
+              <option value="all">All Categories</option>
+              {categories.map((c) => (
+                <option key={c} value={c} className="capitalize">
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#1F2937" }}>
-          {["all", "URGENT", "HIGH", "NORMAL"].map(p => (
+        {/* Right Side: Severity Toggles */}
+        <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#111827", border: "1px solid #374151" }}>
+          {["all", "CRITICAL", "HIGH", "MODERATE"].map((s) => (
             <button
-              key={p}
-              onClick={() => setFilters(f => ({ ...f, priority: p }))}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              key={s}
+              onClick={() => setSelectedSeverity(s)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize cursor-pointer"
               style={{
-                background: filters.priority === p ? "#374151" : "transparent",
-                color: filters.priority === p ? "#F9FAFB" : "#6B7280",
+                background: selectedSeverity === s ? "#374151" : "transparent",
+                color: selectedSeverity === s ? "#F9FAFB" : "#6B7280",
               }}
             >
-              {p === "all" ? "All Priorities" : p.charAt(0) + p.slice(1).toLowerCase()}
+              {s === "all" ? "All Severity" : s.toLowerCase()}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Notification list */}
+      {/* Incident Feed List */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="animate-spin" size={28} style={{ color: "#374151" }} />
         </div>
-      ) : notifications.length === 0 ? (
+      ) : filteredAlerts.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center py-16 rounded-2xl"
           style={{ background: "#1F2937", border: "1px solid #374151" }}
         >
           <Bell size={40} style={{ color: "#374151" }} />
-          <p className="text-base font-bold mt-3" style={{ color: "#6B7280" }}>No notifications</p>
-          <p className="text-sm mt-1" style={{ color: "#374151" }}>You're all caught up</p>
+          <p className="text-base font-bold mt-3" style={{ color: "#6B7280" }}>No matching threats</p>
+          <p className="text-sm mt-1" style={{ color: "#374151" }}>Try adjusting your search filters</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
-            {notifications.map((n, idx) => {
-              const typeConf   = TYPE_CONFIG[n.type] || TYPE_CONFIG.SYSTEM;
-              const prioConf   = PRIORITY_CONFIG[n.priority] || PRIORITY_CONFIG.NORMAL;
-              const TypeIcon   = typeConf.icon;
+            {filteredAlerts.map((n, idx) => {
+              const sevConf = SEV_CONFIG[n.severity?.toUpperCase()] || SEV_CONFIG.MODERATE;
 
               return (
                 <motion.div
@@ -219,70 +235,93 @@ const NotificationsPage = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ delay: idx * 0.02 }}
-                  onClick={() => {
-                    setOpenNotif(n);
-                    if (!n.isRead) markOneRead(n.id);
-                  }}
-                  className="flex items-start gap-4 p-4 rounded-2xl cursor-pointer transition-all"
+                  className="rounded-2xl flex flex-col overflow-hidden transition-all duration-300"
                   style={{
-                    background: !n.isRead ? "rgba(59,130,246,0.05)" : "#1F2937",
-                    border: `1px solid ${!n.isRead ? "rgba(59,130,246,0.2)" : "#374151"}`,
-                    borderLeft: `3px solid ${!n.isRead ? prioConf.color : "#374151"}`,
+                    background: "#1F2937",
+                    border: `1px solid #374151`,
+                    borderTop: `4px solid ${sevConf.color}`
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
-                  onMouseLeave={e => e.currentTarget.style.background = !n.isRead ? "rgba(59,130,246,0.05)" : "#1F2937"}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = "translateY(-4px)";
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.borderColor = "#374151";
+                  }}
                 >
-                  {/* Icon */}
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: typeConf.bg }}
-                  >
-                    <TypeIcon size={18} style={{ color: typeConf.color }} />
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-bold line-clamp-1" style={{ color: "#F9FAFB" }}>
-                        {n.title}
-                      </p>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {n.priority && n.priority !== "NORMAL" && (
-                          <span
-                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full"
-                            style={{ background: prioConf.bg, color: prioConf.color }}
-                          >
-                            {n.priority}
-                          </span>
-                        )}
-                        <span className="text-[10px] font-medium" style={{ color: "#6B7280" }}>
-                          {formatDate(n.createdAt)}
+                  {/* Event Image */}
+                  {n.image_url ? (
+                    <div className="relative h-44 overflow-hidden bg-slate-900">
+                      <img
+                        src={n.image_url}
+                        alt={n.title}
+                        className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                      />
+                      <div className="absolute top-3 right-3">
+                        <span
+                          className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
+                          style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
+                        >
+                          {n.severity}
                         </span>
-                        {!n.isRead && (
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#3B82F6" }} />
-                        )}
                       </div>
                     </div>
-                    <p className="text-xs mt-1 line-clamp-2" style={{ color: "#9CA3AF" }}>
-                      {n.message}
-                    </p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span
-                        className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded"
-                        style={{ background: typeConf.bg, color: typeConf.color }}
-                      >
-                        {n.type}
+                  ) : (
+                    <div className="relative h-44 bg-slate-800/40 flex flex-col items-center justify-center text-slate-500 gap-2 border-b border-slate-700/50">
+                      <Globe size={24} className="opacity-40" />
+                      <span className="text-[10px] uppercase font-black tracking-wider opacity-60">No Media Cover</span>
+                      <div className="absolute top-3 right-3">
+                        <span
+                          className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
+                          style={{ background: sevConf.bg, color: sevConf.color }}
+                        >
+                          {n.severity}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Body Content */}
+                  <div className="p-4 flex-1 flex flex-col gap-2">
+                    <div className="flex justify-between items-center gap-2 text-[10px] text-slate-400 font-bold">
+                      <span className="capitalize px-1.5 py-0.5 rounded bg-slate-800 text-slate-200">
+                        {n.category || "General"}
                       </span>
-                      {n.ctaUrl && (
+                      <span>{n.source}</span>
+                    </div>
+
+                    <h3 className="text-sm font-bold line-clamp-2 text-white flex-1 min-h-[40px] hover:text-[#00C2FF] transition-colors cursor-pointer"
+                        onClick={() => setOpenAlert(n)}>
+                      {n.title}
+                    </h3>
+
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 py-1.5 border-t border-slate-800">
+                      <div className="flex items-center gap-1">
+                        <Clock size={11} />
+                        <span>{formatDate(n.published)}</span>
+                      </div>
+                      {n.confidence != null && (
+                        <span>Conf: {Math.round(n.confidence * 100)}%</span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 mt-2 pt-2 border-t border-slate-800">
+                      <button
+                        onClick={() => setOpenAlert(n)}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700"
+                      >
+                        View Article
+                      </button>
+                      {n.source_url && (
                         <a
-                          href={n.ctaUrl}
+                          href={n.source_url}
                           target="_blank"
                           rel="noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1 text-[10px] font-semibold hover:underline"
-                          style={{ color: "#3B82F6" }}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer bg-[#00C2FF] text-[#0F172A] hover:bg-[#00A3D9] flex items-center justify-center gap-1 shadow-md"
                         >
-                          View <ExternalLink size={9} />
+                          Open Source <ExternalLink size={11} />
                         </a>
                       )}
                     </div>
@@ -296,14 +335,14 @@ const NotificationsPage = () => {
 
       {/* Detail modal */}
       <AnimatePresence>
-        {openNotif && (
+        {openAlert && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
-            onClick={() => setOpenNotif(null)}
+            onClick={() => setOpenAlert(null)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 16 }}
@@ -317,7 +356,7 @@ const NotificationsPage = () => {
               <div className="flex items-start justify-between p-5" style={{ borderBottom: "1px solid #374151" }}>
                 <div className="flex items-start gap-3">
                   {(() => {
-                    const tc = TYPE_CONFIG[openNotif.type] || TYPE_CONFIG.SYSTEM;
+                    const tc = SEV_CONFIG[openAlert.severity?.toUpperCase()] || SEV_CONFIG.MODERATE;
                     const TI = tc.icon;
                     return (
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: tc.bg }}>
@@ -326,17 +365,17 @@ const NotificationsPage = () => {
                     );
                   })()}
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#6B7280" }}>
-                      {openNotif.type} · {openNotif.priority}
+                    <p className="text-[10px] font-black uppercase tracking-widest capitalize" style={{ color: "#6B7280" }}>
+                      {openAlert.category || "General"} · {openAlert.severity}
                     </p>
-                    <h3 className="text-base font-bold mt-0.5" style={{ color: "#F9FAFB" }}>
-                      {openNotif.title}
+                    <h3 className="text-base font-bold mt-0.5 pr-4" style={{ color: "#F9FAFB" }}>
+                      {openAlert.title}
                     </h3>
                   </div>
                 </div>
                 <button
-                  onClick={() => setOpenNotif(null)}
-                  className="p-1.5 rounded-lg transition-all"
+                  onClick={() => setOpenAlert(null)}
+                  className="p-1.5 rounded-lg transition-all flex-shrink-0 cursor-pointer"
                   style={{ color: "#6B7280" }}
                   onMouseEnter={e => e.currentTarget.style.color = "#F9FAFB"}
                   onMouseLeave={e => e.currentTarget.style.color = "#6B7280"}
@@ -347,32 +386,68 @@ const NotificationsPage = () => {
 
               {/* Modal body */}
               <div className="p-5 space-y-4">
-                {openNotif.bannerUrl && (
+                {openAlert.image_url && (
                   <img
-                    src={openNotif.bannerUrl}
-                    alt="Banner"
+                    src={openAlert.image_url}
+                    alt="Alert Banner"
                     className="w-full h-40 object-cover rounded-xl"
                     style={{ border: "1px solid #374151" }}
                   />
                 )}
-                <p className="text-sm leading-relaxed" style={{ color: "#9CA3AF" }}>
-                  {openNotif.message}
-                </p>
-                <div className="flex items-center gap-2" style={{ color: "#6B7280" }}>
-                  <Clock size={12} />
-                  <span className="text-xs">{formatDate(openNotif.createdAt)}</span>
+
+                {/* Description/Headline */}
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase tracking-wider" style={{ color: "#6B7280" }}>Incident Details</p>
+                  <p className="text-sm leading-relaxed" style={{ color: "#9CA3AF" }}>
+                    {openAlert.title}
+                  </p>
                 </div>
-                {openNotif.ctaUrl && (
+
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl text-xs" style={{ background: "#111827", border: "1px solid #374151" }}>
+                  <div>
+                    <p className="font-semibold text-[10px] uppercase tracking-wider" style={{ color: "#6B7280" }}>Location</p>
+                    <p className="font-bold mt-0.5" style={{ color: "#F9FAFB" }}>{openAlert.country || "Global"}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[10px] uppercase tracking-wider" style={{ color: "#6B7280" }}>Published</p>
+                    <p className="font-bold mt-0.5" style={{ color: "#F9FAFB" }}>{formatDate(openAlert.published)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[10px] uppercase tracking-wider" style={{ color: "#6B7280" }}>Source Provider</p>
+                    <p className="font-bold mt-0.5" style={{ color: "#F9FAFB" }}>{openAlert.source || "GEO_RISK_ENGINE"}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[10px] uppercase tracking-wider" style={{ color: "#6B7280" }}>Intelligence Metrics</p>
+                    <p className="font-bold mt-0.5" style={{ color: "#F9FAFB" }}>
+                      Intensity: {openAlert.intensity != null ? (openAlert.intensity * 100).toFixed(0) : "N/A"}% 
+                      {openAlert.confidence != null ? ` (Conf: ${(openAlert.confidence * 100).toFixed(0)}%)` : ""}
+                    </p>
+                  </div>
+                  {openAlert.lat != null && openAlert.lon != null && (
+                    <div className="col-span-2">
+                      <p className="font-semibold text-[10px] uppercase tracking-wider" style={{ color: "#6B7280" }}>Coordinates</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <MapPin size={11} style={{ color: "#6B7280" }} />
+                        <span className="font-mono text-[11px]" style={{ color: "#E5E7EB" }}>
+                          {openAlert.lat.toFixed(5)}, {openAlert.lon.toFixed(5)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {openAlert.source_url && (
                   <a
-                    href={openNotif.ctaUrl}
+                    href={openAlert.source_url}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold transition-all"
-                    style={{ background: "#3B82F6", color: "#fff" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "#2563EB"}
-                    onMouseLeave={e => e.currentTarget.style.background = "#3B82F6"}
+                    style={{ background: "#00C2FF", color: "#0F172A" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#00A3D9"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#00C2FF"}
                   >
-                    {openNotif.ctaLabel || "View Details"} <ExternalLink size={13} />
+                    Access Intelligence Source <ExternalLink size={13} />
                   </a>
                 )}
               </div>

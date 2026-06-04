@@ -9,6 +9,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
+const tileUrls = {
+  voyager:   'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  dark:      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light:     'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  terrain:   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+  osm:       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+};
+
 const isValidCoord = c => Array.isArray(c) && c.length === 2 && !isNaN(c[0]) && !isNaN(c[1]);
 
 // ── Port / Anchor marker ─────────────────────────────────────────
@@ -56,6 +65,147 @@ const makeWaypointIcon = (num, critical) =>
       justify-content:center;color:white;font-size:9px;font-weight:900;font-family:system-ui;">${num}</div>`,
     className: '', iconSize: [22, 22], iconAnchor: [11, 11],
   });
+
+const hDistKm = (p1, p2) => {
+  const dLa = (p2[1] - p1[1]) * (Math.PI / 180);
+  const dLo = (p2[0] - p1[0]) * (Math.PI / 180);
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(p1[1] * Math.PI / 180) * Math.cos(p2[1] * Math.PI / 180) * Math.sin(dLo / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const ClusteredIncidentMarkers = ({ events }) => {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+
+  useEffect(() => {
+    const handleZoom = () => setZoom(map.getZoom());
+    map.on('zoomend', handleZoom);
+    return () => {
+      map.off('zoomend', handleZoom);
+    };
+  }, [map]);
+
+  const clusters = useMemo(() => {
+    if (!events || events.length === 0) return [];
+    
+    // Clustering radius in km based on map zoom level
+    const thresholdKm = zoom > 12 ? 2 
+                      : zoom > 9 ? 15 
+                      : zoom > 6 ? 80 
+                      : zoom > 4 ? 250 
+                      : 600;
+    
+    const result = [];
+    for (const event of events) {
+      if (!event.location || event.location.length < 2) continue;
+      
+      let grouped = false;
+      for (const cluster of result) {
+        const dist = hDistKm(
+          [cluster.lon, cluster.lat],
+          [event.location[1], event.location[0]]
+        );
+        
+        if (dist < thresholdKm) {
+          cluster.events.push(event);
+          // Recalculate cluster center as average
+          cluster.lat = (cluster.lat * (cluster.events.length - 1) + event.location[0]) / cluster.events.length;
+          cluster.lon = (cluster.lon * (cluster.events.length - 1) + event.location[1]) / cluster.events.length;
+          grouped = true;
+          break;
+        }
+      }
+      
+      if (!grouped) {
+        result.push({
+          lat: event.location[0],
+          lon: event.location[1],
+          events: [event]
+        });
+      }
+    }
+    return result;
+  }, [events, zoom]);
+
+  return (
+    <>
+      {clusters.map((cluster, ci) => {
+        if (cluster.events.length === 1) {
+          const event = cluster.events[0];
+          const severity = event.intensity >= 0.5 ? 'CRITICAL' : event.intensity >= 0.25 ? 'HIGH' : 'MODERATE';
+          const severityColor = severity === 'CRITICAL' ? '#EF4444' : severity === 'HIGH' ? '#F59E0B' : '#22C55E';
+          
+          // Custom divicon with warning symbol inside a glowing dot
+          const pinIcon = L.divIcon({
+            html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+              <div style="position:absolute;width:24px;height:24px;border-radius:50%;background:${severityColor};opacity:0.3;animation:ping 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+              <div style="position:relative;width:14px;height:14px;border-radius:50%;background:${severityColor};border:2px solid white;box-shadow:0 0 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">
+                <span style="color:white;font-size:8px;font-weight:950;font-family:system-ui;">!</span>
+              </div>
+            </div>`,
+            className: '', iconSize: [24, 24], iconAnchor: [12, 12]
+          });
+          
+          return (
+            <Marker key={`event-${ci}`} position={[cluster.lat, cluster.lon]} icon={pinIcon}>
+              <Popup>
+                <div className="p-2.5 max-w-xs text-xs" style={{ background: '#0F172A', color: '#F8FAFC', borderRadius: '12px' }}>
+                  {event.image_url && (
+                    <a href={event.source_url || '#'} target={event.source_url ? "_blank" : undefined} rel="noreferrer" className={event.source_url ? "block mb-2" : "block mb-2 pointer-events-none"}>
+                      <img src={event.image_url} alt={event.headline} className="w-full h-24 object-cover rounded-lg hover:opacity-90 transition-opacity" />
+                    </a>
+                  )}
+                  <p className="font-black text-sm mb-1 leading-snug" style={{ color: severityColor }}>{event.headline}</p>
+                  <p className="text-[9px] uppercase font-extrabold tracking-wider opacity-85 mb-1.5" style={{ color: severityColor }}>
+                    {event.label || 'threat'} · {event.confidence != null ? `${(event.confidence * 100).toFixed(0)}% confidence` : ''}
+                  </p>
+                  {event.publisher && (
+                    <p className="text-[10px] mb-1" style={{ color: '#94A3B8' }}>
+                      Publisher: <span className="font-bold">{event.publisher}</span>
+                    </p>
+                  )}
+                  {event.published_at && (
+                    <p className="text-[9px] opacity-60 mb-2">
+                      Published Date: {new Date(event.published_at).toLocaleDateString()}
+                    </p>
+                  )}
+                  {event.source_url && (
+                    <a href={event.source_url} target="_blank" rel="noreferrer" 
+                      className="inline-flex items-center justify-center w-full px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-white bg-cyan-600 hover:bg-cyan-500 transition-colors text-center mt-1">
+                      Read Article
+                    </a>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        } else {
+          const count = cluster.events.length;
+          const hasCritical = cluster.events.some(e => e.intensity >= 0.5);
+          const hasHigh = cluster.events.some(e => e.intensity >= 0.25);
+          const clusterBg = hasCritical ? '#EF4444' : hasHigh ? '#F59E0B' : '#22C55E';
+          
+          const clusterIcon = L.divIcon({
+            html: `<div style="width:34px;height:34px;border-radius:50%;background:${clusterBg};
+              border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;
+              justify-content:center;color:white;font-size:11px;font-weight:900;font-family:system-ui;">${count}</div>`,
+            className: '', iconSize: [34, 34], iconAnchor: [17, 17]
+          });
+
+          return (
+            <Marker key={`cluster-${ci}`} position={[cluster.lat, cluster.lon]} icon={clusterIcon}
+              eventHandlers={{
+                click: () => {
+                  map.setView([cluster.lat, cluster.lon], Math.min(18, zoom + 2));
+                }
+              }}
+            />
+          );
+        }
+      })}
+    </>
+  );
+};
 
 // ── Navigation simulator dot ─────────────────────────────────────
 const NavigationSimulator = ({ coords, isActive, isNavigating, speedMultiplier, freightMode }) => {
@@ -138,6 +288,17 @@ const MapReset = ({ resetSignal }) => {
   return null;
 };
 
+// ── Center map on coordinate ──────────────────────────────────────
+const CenterMapControl = ({ centerCoord }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (centerCoord && Array.isArray(centerCoord) && centerCoord.length === 2 && !isNaN(centerCoord[0]) && !isNaN(centerCoord[1])) {
+      map.flyTo(centerCoord, 8, { duration: 1.2 });
+    }
+  }, [centerCoord, map]);
+  return null;
+};
+
 // ── Locate-me control ────────────────────────────────────────────
 const LocateMeButton = () => {
   const map = useMap();
@@ -172,6 +333,10 @@ export const RouteMap = ({
   isNavigating = false, simSpeed = 2,
   aiRecommendation = null,
   resetSignal = null,
+  replayingShipment = null,
+  setReplayingShipment = null,
+  centerMapTo = null,
+  setCenterMapTo = null,
 }) => {
   const [allRoutes, setAllRoutes]           = useState([]);
   const [loading, setLoading]               = useState(false);
@@ -206,15 +371,6 @@ export const RouteMap = ({
     onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
   }, [resetSignal, onSetActiveRoute]);
 
-  const tileUrls = {
-    voyager:   'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    osm:       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    terrain:   'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    dark:      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    light:     'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  };
-
   const fetchRoutes = useCallback(async (start, end, mode) => {
     setLoading(true);
     try {
@@ -230,7 +386,7 @@ export const RouteMap = ({
         const processed = res.data.routes.map((r, i) => ({
           ...r, id: i,
           coords: r.geometry.coordinates.map(c => [c[1], c[0]]),
-          intelligence: r.intelligence || {},
+          intelligence: { loading: true },
           baseDuration: r.duration / scale,
         }));
         setAllRoutes(processed);
@@ -250,6 +406,32 @@ export const RouteMap = ({
 
         onRouteDataRef.current?.({ allRoutes: processed, activeRouteIndex: 0 });
         setRouteError(null);
+
+        // Fetch intelligence in parallel for all routes
+        processed.forEach(async (route) => {
+          try {
+            const intelRes = await axios.post(`${BASE_URL}/api/ai/risk/analyze`, {
+              origin: start.display_name,
+              destination: end.display_name,
+              mode: freightMode,
+              routeCoords: route.geometry.coordinates
+            });
+            if (intelRes.data.success) {
+              setAllRoutes(curr => {
+                const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: intelRes.data.intelligence } : cr);
+                onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
+                return updated;
+              });
+            }
+          } catch (intelErr) {
+            console.error('[RouteMap] Intel fetch error:', intelErr.message);
+            setAllRoutes(curr => {
+              const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: { error: true, summary: 'Risk intelligence temporarily unavailable.' } } : cr);
+              onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
+              return updated;
+            });
+          }
+        });
       } else {
         setAllRoutes([]);
         setPortOriginCoord(null); setPortDestCoord(null);
@@ -268,9 +450,57 @@ export const RouteMap = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [freightMode]);
 
   useEffect(() => {
+    if (replayingShipment) {
+      console.log('[RouteMap] Restoring replayed shipment state...', replayingShipment);
+      const coords = replayingShipment.routeGeometry.coordinates || [];
+      const replayedRoute = {
+        id: 0,
+        type: 'Replayed Route',
+        geometry: replayingShipment.routeGeometry,
+        coords: coords.map(c => [c[1], c[0]]),
+        distance: replayingShipment.distance,
+        duration: replayingShipment.eta,
+        summary: replayingShipment.mode === 'road' ? 'Road Route' : replayingShipment.mode === 'sea' ? 'Sea Route' : 'Air Route',
+        intelligence: { loading: true },
+        vehicle: replayingShipment.mode === 'road' ? 'truck' : replayingShipment.mode === 'sea' ? 'ship' : 'air'
+      };
+
+      setAllRoutes([replayedRoute]);
+      setPortOriginCoord(null); setPortDestCoord(null);
+      setPortOriginName(null);  setPortDestName(null);
+      onRouteDataRef.current?.({ allRoutes: [replayedRoute], activeRouteIndex: 0 });
+      setRouteError(null);
+
+      // Trigger fresh weather & GeoRisk intelligence fetch for the replayed route!
+      const fetchReplayedIntel = async () => {
+        try {
+          const intelRes = await axios.post(`${BASE_URL}/api/ai/risk/analyze`, {
+            origin: replayingShipment.origin,
+            destination: replayingShipment.destination,
+            mode: replayingShipment.mode === 'road' ? 'truck' : replayingShipment.mode === 'sea' ? 'ship' : 'air',
+            routeCoords: replayingShipment.routeGeometry.coordinates
+          });
+          if (intelRes.data.success) {
+            const updatedRoute = { ...replayedRoute, intelligence: intelRes.data.intelligence };
+            setAllRoutes([updatedRoute]);
+            onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
+          }
+        } catch (intelErr) {
+          console.error('[RouteMap] Replay intel error:', intelErr.message);
+          const updatedRoute = { ...replayedRoute, intelligence: { error: true, summary: 'Risk intelligence temporarily unavailable.' } };
+          setAllRoutes([updatedRoute]);
+          onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
+        }
+      };
+
+      fetchReplayedIntel();
+      setReplayingShipment(null); // Clear the replaying state
+      return;
+    }
+
     if (selectedSource && selectedDestination) {
       const t = setTimeout(() => fetchRoutes(selectedSource, selectedDestination, vehicleMode), 300);
       return () => clearTimeout(t);
@@ -281,7 +511,7 @@ export const RouteMap = ({
       onRouteDataRef.current?.({ allRoutes: [], activeRouteIndex: 0 });
       setRouteError(null);
     }
-  }, [selectedSource, selectedDestination, vehicleMode, fetchRoutes]);
+  }, [selectedSource, selectedDestination, vehicleMode, fetchRoutes, replayingShipment, setReplayingShipment]);
 
   const sourceCoord = useMemo(() => {
     if (!selectedSource) return null;
@@ -574,6 +804,7 @@ export const RouteMap = ({
       <MapContainer center={[25, 15]} zoom={2}
         style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
         zoomControl={false} dragging attributionControl={false}>
+        <CenterMapControl centerCoord={centerMapTo} />
         <MapFitBounds allRoutes={allRoutes} />
         <MapReset resetSignal={resetSignal} />
         <ZoomControl position="bottomright" />
@@ -622,6 +853,9 @@ export const RouteMap = ({
         })}
 
         {mapLayers}
+
+        {/* Plot actual event locations returned by GEO_RISK_ENGINE with clustering */}
+        <ClusteredIncidentMarkers events={activeIntel?.events || []} />
         {/* Origin marker — use snapped port position for sea mode */}
         {(isMaritime ? portOriginCoord : sourceCoord) && (
           <Marker

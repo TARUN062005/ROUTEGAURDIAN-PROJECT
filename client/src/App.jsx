@@ -5,7 +5,6 @@ import { Toaster } from 'react-hot-toast';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
-import RoutesMapPage from './pages/RoutesMapPage';
 import ShipmentsPage from './pages/ShipmentsPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
@@ -43,7 +42,6 @@ function App() {
         <Route element={<ProtectedRoutes />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard"   element={<Dashboard />} />
-            <Route path="/routes-map"  element={<RoutesMapPage />} />
             <Route path="/shipments"   element={<ShipmentsPage />} />
             <Route path="/profile"     element={<ProfilePage />} />
             <Route path="/settings"    element={<SettingsPage />} />

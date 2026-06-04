@@ -78,13 +78,26 @@ const extractJSON = (text) => {
     return null;
 };
 
-// ── MULTI-TURN AGENT ──────────────────────────────────────────────────────────
+// MULTI-TURN AGENT
 exports.agentChat = async (req, res) => {
     const { message, state = {}, history = [], confirmedSource, confirmedDest } = req.body;
 
     if (!message && !confirmedSource) return res.status(400).json({ success: false, error: 'Missing message' });
 
     const PORT = process.env.PORT || 8000;
+    const { prisma } = require('../utils/dbConnector');
+    const geoRiskService = require('../services/GeoRiskService');
+    const aiRouteController = require('./aiRouteController');
+
+    const ALLOWED_THREATS = [
+      'conflict', 'sanctions', 'maritime', 'shipping', 'piracy', 'weather',
+      'airspace_restriction', 'port_closure', 'border_disruption'
+    ];
+    const isThreat = (event) => {
+      if (!event || !event.label) return false;
+      const label = event.label.toLowerCase().trim();
+      return ALLOWED_THREATS.includes(label);
+    };
 
     const currentState = {
         origin:          state.origin          || null,
@@ -98,6 +111,336 @@ exports.agentChat = async (req, res) => {
         confirmedDest:   state.confirmedDest   || null,
     };
 
+    // STEP 1: Gemini Intent Extraction & Classification
+    let intentData = null;
+    if (message && GEMINI_KEY) {
+        try {
+            const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+            const intentModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            
+            const prompt = `You are a logistics assistant. Analyse the user message and history.
+User message: "${message}"
+Current state: ${JSON.stringify(currentState)}
+
+Classify the user intent into one of these types:
+1. "SHIPMENT_CREATE": The user wants to create a new shipment or plan a route, e.g., "Ship electronics from Mumbai to Singapore", "Delhi to London by air", or "Use air instead" (when origin and destination are already in the state).
+2. "RISK_QA": The user is asking a general or specific question about risks, incidents, safety, or threats, e.g., "Any threats near Singapore?", "Is Red Sea safe?", "What risks affect this shipment?".
+3. "CHAT": General greeting, follow-up, or chat.
+
+If it is "SHIPMENT_CREATE", extract or update these parameters (use values from message or existing state):
+- origin (city/port name, e.g. "Mumbai")
+- destination (city/port name, e.g. "Singapore")
+- mode ("sea", "air", "road" or null)
+- cargo (e.g., "electronics", or null)
+- priority ("express", "standard", "economy" or null)
+- date (natural language date or date string, or null)
+
+If it is "RISK_QA", extract the search location or topic (e.g. "Singapore", "Red Sea", or "current route" if asking about the route).
+
+Return a JSON object only (no markdown code blocks, no extra text):
+{
+  "intent": "SHIPMENT_CREATE" | "RISK_QA" | "CHAT",
+  "extracted": {
+    "origin": "<origin or null>",
+    "destination": "<destination or null>",
+    "mode": "sea" | "air" | "road" | null,
+    "cargo": "<cargo or null>",
+    "priority": "express" | "standard" | "economy" | null,
+    "date": "<date or null>"
+  },
+  "qaQuery": "<location/topic or null>"
+}`;
+
+            const result = await intentModel.generateContent(prompt);
+            const rawText = result.response.text();
+            const match = rawText.match(/\{[\s\S]*?\}/);
+            if (match) {
+                intentData = JSON.parse(match[0]);
+            }
+        } catch (err) {
+            console.warn('[AGENT] Intent classification error:', err.message);
+        }
+    }
+
+    // Keyword fallback classification
+    if (!intentData && message) {
+        const msg = message.toLowerCase().trim();
+        const isCreate = msg.includes('ship') || msg.includes('route') || msg.includes('cargo') || msg.includes('freight') || msg.includes('send') || (currentState.origin && currentState.destination && (msg.includes('air') || msg.includes('sea') || msg.includes('road') || msg.includes('truck')));
+        const isQA = msg.includes('threat') || msg.includes('risk') || msg.includes('safe') || msg.includes('incident') || msg.includes('danger');
+        
+        intentData = {
+            intent: isCreate ? 'SHIPMENT_CREATE' : isQA ? 'RISK_QA' : 'CHAT',
+            extracted: {
+                origin: null,
+                destination: null,
+                mode: msg.includes('air') ? 'air' : msg.includes('sea') || msg.includes('ship') ? 'sea' : msg.includes('road') || msg.includes('truck') ? 'road' : null,
+                cargo: null,
+                priority: null,
+                date: null
+            },
+            qaQuery: null
+        };
+    }
+
+    console.log('[AGENT INTENT]:', intentData);
+
+    // STEP 2: Handle RISK_QA (Risk Q&A Copilot)
+    if (intentData && intentData.intent === 'RISK_QA') {
+        try {
+            console.log('[AGENT QA] Fetching live incidents for RAG...');
+            const incidents = await geoRiskService.getLiveIncidents();
+            let replyText = '';
+
+            if (GEMINI_KEY) {
+                const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+                const qaModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                
+                const qaPrompt = `You are Routy, the Logistics Intelligence Copilot for RouteGuardian.
+You must answer the user's question using the provided real-time incident database from our GEO_RISK_ENGINE.
+
+USER QUESTION: "${message}"
+CURRENT ROUTE CONTEXT: ${currentState.origin ? `${currentState.origin} to ${currentState.destination} via ${currentState.mode}` : 'None'}
+
+REAL-TIME INCIDENTS FROM GEO_RISK_ENGINE:
+${JSON.stringify(incidents.map(i => ({ headline: i.headline, location: i.location, severity: i.severity, category: i.category, publisher: i.publisher, date: i.published_at || i.published })))}
+
+RULES:
+1. Rely ONLY on the real-time incident data provided above.
+2. If the user asks about threats/risks near a location (e.g. Singapore, Red Sea) or along their route, scan the incidents for matches by name, region, or coordinates.
+3. NEVER hallucinate incidents. If there are no matching incidents in the database, say that there are no active threats reported or that the intelligence is unavailable.
+4. Keep your answer professional, concise, and helpful to logistics operators (1-3 sentences).
+
+Answer:`;
+                const qaRes = await qaModel.generateContent(qaPrompt);
+                replyText = qaRes.response.text().trim();
+            } else {
+                replyText = 'Risk intelligence temporarily unavailable.';
+            }
+
+            return res.json({
+                success: true,
+                type: 'CHAT',
+                message: replyText,
+                state: currentState
+            });
+        } catch (qaErr) {
+            console.error('[AGENT QA ERROR]:', qaErr.message);
+            return res.json({
+                success: true,
+                type: 'CHAT',
+                message: 'Risk intelligence temporarily unavailable.',
+                state: currentState
+            });
+        }
+    }
+
+    // STEP 3: Handle SHIPMENT_CREATE (One-Shot NLP & Voice Creation)
+    if (intentData && intentData.intent === 'SHIPMENT_CREATE') {
+        const originQuery = intentData.extracted.origin || currentState.origin;
+        const destQuery = intentData.extracted.destination || currentState.destination;
+
+        if (originQuery && destQuery) {
+            const rawMode = intentData.extracted.mode || currentState.mode || 'sea';
+            const mode = rawMode === 'sea' ? 'ship' : rawMode === 'road' ? 'truck' : rawMode;
+            const cargo = intentData.extracted.cargo || currentState.cargo || 'General Cargo';
+            const priority = intentData.extracted.priority || currentState.priority || 'standard';
+            const date = intentData.extracted.date || currentState.date || 'ASAP';
+
+            console.log(`[AGENT NLP CREATE] Creating shipment: ${originQuery} -> ${destQuery} (${mode})`);
+
+            // 1. Geocode locations
+            const [startGeo, endGeo] = await Promise.all([
+                geocode(originQuery, PORT),
+                geocode(destQuery, PORT)
+            ]);
+
+            if (!startGeo || !endGeo) {
+                const missing = !startGeo ? originQuery : destQuery;
+                return res.json({
+                    success: true,
+                    type: 'CLARIFY',
+                    message: `I couldn't find "${missing}" on the map. Please select a more specific port or city name.`,
+                    state: {
+                        ...currentState,
+                        origin: startGeo ? originQuery : null,
+                        destination: endGeo ? destQuery : null
+                    }
+                });
+            }
+
+            // 2. Compute route geometry
+            let routes = [];
+            try {
+                routes = await aiRouteController.computeRouteInternal(startGeo.lat, startGeo.lon, endGeo.lat, endGeo.lon, mode, originQuery, destQuery);
+            } catch (routeErr) {
+                console.error('[AGENT AUTO ROUTE ERROR]:', routeErr.message);
+                return res.json({
+                    success: true,
+                    type: 'CHAT',
+                    message: `I couldn't calculate a ${mode} route from ${originQuery} to ${destQuery}. Please try another transportation mode.`,
+                    state: { ...currentState, origin: originQuery, destination: destQuery, mode }
+                });
+            }
+
+            const route = routes[0];
+            if (!route) {
+                return res.json({
+                    success: true,
+                    type: 'CHAT',
+                    message: `Routing engine returned no valid paths between these coordinates.`,
+                    state: { ...currentState, origin: originQuery, destination: destQuery, mode }
+                });
+            }
+
+            // 3. Analyze weather and risk
+            let geoRiskResult = null;
+            let weatherReports = [];
+            try {
+                const [riskRes, weatherRes] = await Promise.all([
+                    geoRiskService.analyzeRoute(startGeo.display_name, endGeo.display_name).catch(() => null),
+                    aiRouteController.getWeatherAlongRoute(route.geometry.coordinates, mode)
+                ]);
+                geoRiskResult = riskRes;
+                weatherReports = weatherRes;
+            } catch (analysisErr) {
+                console.warn('[AGENT ANALYSIS ERROR]:', analysisErr.message);
+            }
+
+            const MODE_MAP = { ship: 'sea', air: 'air', truck: 'road' };
+            const engineMode = MODE_MAP[mode] || 'road';
+            const modeResult = geoRiskResult?.modes?.[engineMode];
+            const riskScore = modeResult?.risk_score != null ? Math.round(modeResult.risk_score * 100) : null;
+            const safetyScore = modeResult?.safety_score != null ? Math.round(modeResult.safety_score * 100) : null;
+
+            let weatherImpact = 'LOW';
+            const hasCriticalWeather = weatherReports.some(w => w.severity === 'CRITICAL');
+            const hasCautionWeather = weatherReports.some(w => w.severity === 'CAUTION');
+            if (hasCriticalWeather) weatherImpact = 'HIGH';
+            else if (hasCautionWeather) weatherImpact = 'MEDIUM';
+
+            // 4. Generate AI Executive Report
+            let aiReport = null;
+            if (GEMINI_KEY) {
+                try {
+                    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+                    const reportModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                    const prompt = `You are a logistics risk analyst AI. Generate a structured AI Route Intelligence Report.
+Origin: ${startGeo.display_name}
+Destination: ${endGeo.display_name}
+Transport Mode: ${mode}
+Distance: ${route.distance} meters
+Duration/ETA: ${route.duration} seconds
+Risk Score: ${riskScore ?? 'N/A'}/100
+Safety Score: ${safetyScore ?? 'N/A'}/100
+Weather Impact Info: ${JSON.stringify(weatherReports)}
+Incidents: ${JSON.stringify((modeResult?.events || []).map(e => ({ headline: e.headline, publisher: e.publisher, intensity: e.intensity })))}
+
+Generate a JSON object matching this schema (do not include markdown syntax or extra text):
+{
+  "weatherImpact": "LOW" | "MEDIUM" | "HIGH",
+  "geopoliticalImpact": "LOW" | "MEDIUM" | "HIGH",
+  "affectedRegions": ["Region/City 1", "Region/City 2", ...],
+  "topRisks": ["Risk 1", "Risk 2", "Risk 3"],
+  "operationalRecommendation": "Proceed" | "Delay" | "Reroute",
+  "executiveSummary": "3-5 sentence AI-generated report summary explaining the current risk situation, weather impact, and operational recommendation."
+}`;
+                    const result = await reportModel.generateContent(prompt);
+                    const text = result.response.text();
+                    const match = text.match(/\{[\s\S]*?\}/);
+                    if (match) {
+                        aiReport = JSON.parse(match[0]);
+                    }
+                } catch (err) {
+                    console.warn('[AGENT] Gemini report failed:', err.message);
+                }
+            }
+
+            if (!aiReport) {
+                const affectedRegions = weatherReports.map(w => w.place?.split(',')[0]).filter(Boolean).slice(0, 3);
+                const topRisks = [];
+                if (modeResult?.events) {
+                    modeResult.events.filter(isThreat).slice(0, 3).forEach(e => {
+                        if (e.headline) topRisks.push(e.headline);
+                    });
+                }
+                if (topRisks.length < 3 && hasCriticalWeather) {
+                    topRisks.push('Severe weather disruption detected along transit route.');
+                }
+                if (topRisks.length === 0) {
+                    topRisks.push('No immediate major geopolitical threats reported.');
+                }
+
+                aiReport = {
+                    weatherImpact,
+                    geopoliticalImpact: riskScore != null && riskScore >= 65 ? 'HIGH' : riskScore >= 35 ? 'MEDIUM' : 'LOW',
+                    affectedRegions,
+                    topRisks: topRisks.slice(0, 3),
+                    operationalRecommendation: riskScore >= 65 || hasCriticalWeather ? 'Reroute' : riskScore >= 35 || hasCautionWeather ? 'Delay' : 'Proceed',
+                    executiveSummary: `The transit corridor from ${originQuery.split(',')[0]} to ${destQuery.split(',')[0]} is currently evaluated with a geopolitical risk score of ${riskScore ?? 'N/A'}/100 and a safety score of ${safetyScore ?? 'N/A'}/100. Geopolitical impact is rated as such with active threat incidents. Weather conditions along the route pose a ${weatherImpact.toLowerCase()} impact.`
+                };
+            }
+
+            // 5. Save to Prisma database
+            const shipment = await prisma.shipment.create({
+                data: {
+                    origin: startGeo.display_name,
+                    destination: endGeo.display_name,
+                    mode: mode === 'ship' ? 'sea' : mode === 'truck' ? 'road' : mode,
+                    distance: parseFloat(route.distance) || 0,
+                    eta: parseFloat(route.duration) || 0,
+                    riskScore: riskScore != null ? parseFloat(riskScore) : null,
+                    safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
+                    routeGeometry: route.geometry,
+                    cargo,
+                    priority,
+                    date,
+                    time: '12:00',
+                    weatherSummary: weatherImpact,
+                    riskSummary: geoRiskResult?.recommended_mode || 'low-risk',
+                    aiReport: JSON.stringify(aiReport),
+                    status: 'active'
+                }
+            });
+
+            const updatedState = {
+                ...currentState,
+                origin: startGeo.display_name,
+                destination: endGeo.display_name,
+                mode,
+                cargo,
+                priority,
+                date,
+                time: '12:00',
+                confirmedSource: startGeo,
+                confirmedDest: endGeo
+            };
+
+            const modeLabel = { sea: 'maritime', air: 'air freight', rail: 'rail', truck: 'road' }[mode] || mode;
+
+            return res.json({
+                success: true,
+                type: 'COMPLETE',
+                message: `Successfully created and saved shipment for ${cargo} from ${startGeo.display_name.split(',')[0]} to ${endGeo.display_name.split(',')[0]} using ${modeLabel} routing. Route geometry and real-time risk report have been successfully saved to DB.`,
+                state: updatedState,
+                source: startGeo,
+                destination: endGeo,
+                shipment
+            });
+        }
+    }
+
+    // Merge extracted fields from intent into currentState if they exist (for multi-turn collection)
+    if (intentData && intentData.extracted) {
+        const ext = intentData.extracted;
+        if (ext.origin)      currentState.origin      = ext.origin;
+        if (ext.destination) currentState.destination = ext.destination;
+        if (ext.mode)        currentState.mode        = ext.mode;
+        if (ext.date)        currentState.date        = ext.date;
+        if (ext.time)        currentState.time        = ext.time;
+        if (ext.cargo)       currentState.cargo       = ext.cargo;
+        if (ext.priority)    currentState.priority    = ext.priority;
+    }
+
     // Required field set — route only generates when ALL five are known
     const REQUIRED = ['origin', 'destination', 'mode', 'date', 'time'];
     const FIELD_QUESTIONS = {
@@ -105,12 +448,12 @@ exports.agentChat = async (req, res) => {
         time: "What's the preferred departure time? (e.g. 09:00, morning, any time)",
     };
 
-    // ── SHORT-CIRCUIT: port/airport already confirmed — continue collecting remaining fields ──
-    if (confirmedSource && confirmedDest && state.mode) {
+    // SHORT-CIRCUIT: port/airport already confirmed — continue collecting remaining fields
+    if (confirmedSource && confirmedDest && currentState.mode) {
         const updatedState = { ...currentState, confirmedSource, confirmedDest };
         const missing = REQUIRED.filter(f => !updatedState[f]);
         if (missing.length === 0) {
-            const modeLabel = { sea: 'maritime', air: 'air freight', rail: 'rail', truck: 'road' }[state.mode] || state.mode;
+            const modeLabel = { sea: 'maritime', air: 'air freight', rail: 'rail', truck: 'road' }[currentState.mode] || currentState.mode;
             return res.json({
                 success: true,
                 type: 'COMPLETE',
@@ -196,7 +539,7 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         parsed = extractJSON(aiRes.text);
     }
 
-    // ── Fallback parser (runs when Gemini is unavailable or returns invalid JSON) ──
+    // Fallback parser (runs when Gemini is unavailable or returns invalid JSON)
     if (!parsed) {
         const msg = message.toLowerCase().trim();
 
@@ -235,7 +578,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         const matchedCountryPort = Object.entries(COUNTRY_PORT_HINTS).find(([, ports]) =>
             ports.some(p => normalize(p) === normalizedMsg)
         );
-        const portCountry = matchedCountryPort?.[0] || null;
 
         if (matchedPort && !currentState.origin) {
             parsed = {
@@ -278,7 +620,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
                 options: [],
             };
         } else if (detectedMode && !currentState.mode) {
-            // User answered a "which mode?" question
             const modeLabels = { sea: 'Maritime', air: 'Air freight', rail: 'Rail', truck: 'Road' };
             const nextQ = !currentState.date
                 ? `${modeLabels[detectedMode]} it is! What date would you like to ship? (e.g. June 15, next Monday, or ASAP)`
@@ -294,7 +635,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         } else if (routeMatch) {
             const originText = routeMatch[1].trim();
             const rawDest    = routeMatch[2].trim();
-            // Detect trailing "by <mode>" / "via <mode>"
             const byMatch   = rawDest.match(/^(.+?)\s+(?:by|via|using|through)\s+(\w+)$/i);
             const cleanDest  = byMatch ? byMatch[1].trim() : rawDest;
             const inlineMode = byMatch ? (MODE_KEYWORDS[byMatch[2].toLowerCase()] || null) : null;
@@ -326,7 +666,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
                 clarifyField: null, options: [],
             };
         } else {
-            // Context-aware fallback — never show the generic welcome when state has data
             const nextPrompt = !currentState.origin
                 ? `Where would you like to ship from?`
                 : !currentState.destination
@@ -347,7 +686,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         }
     }
 
-    // Merge extracted fields into state (only update non-null values — never clobber existing state)
     const extracted = parsed.extracted || {};
     const newState = { ...currentState };
     if (extracted.origin)      newState.origin      = extracted.origin;
@@ -360,7 +698,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
 
     console.log('[AGENT] STATE OUT:', JSON.stringify(newState));
 
-    // ── HANDLE CLARIFY ────────────────────────────────────────────
     if (parsed.type === 'CLARIFY') {
         return res.json({
             success: true,
@@ -372,10 +709,8 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         });
     }
 
-    // ── HANDLE COMPLETE — only when ALL 5 required fields are present ────────
     const allRequiredFilled = REQUIRED.every(f => newState[f]);
     if (allRequiredFilled) {
-        // Geocode both locations
         const [startGeo, endGeo] = await Promise.all([
             geocode(newState.origin, PORT),
             geocode(newState.destination, PORT),
@@ -389,15 +724,13 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
                 message: `I couldn't find "${missing}" on the map. Please choose a more specific port or city.`,
                 state: { ...newState, [!startGeo ? 'origin' : 'destination']: null },
                 clarifyField: !startGeo ? 'origin' : 'destination',
-                options: !startGeo ? (COUNTRY_PORT_HINTS[missing.toLowerCase()] || []) : [],
+                options: [],
             });
         }
 
         const mode      = newState.mode;
         const modeLabel = { sea: 'maritime', air: 'air freight', rail: 'rail', truck: 'road' }[mode] || mode;
 
-        // ── SEA / AIR: resolve to port/airport options first (RESOLVE step) ──
-        // Never route directly from raw city coordinates for sea/air modes.
         if (mode === 'sea' || mode === 'air') {
             const endpoint = mode === 'sea' ? 'resolve-port' : 'resolve-airport';
             const optKey   = mode === 'sea' ? 'nearestPorts' : 'nearestAirports';
@@ -433,7 +766,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
             }
         }
 
-        // ── TRUCK / RAIL (or sea/air resolver fallback): direct COMPLETE ──────
         return res.json({
             success: true,
             type: 'COMPLETE',
@@ -444,7 +776,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         });
     }
 
-    // ── DETERMINISTIC FLOW: always ask for the NEXT missing required field ────
     const REQUIRED_ORDER = ['origin', 'destination', 'mode', 'date', 'time'];
     const missingField   = REQUIRED_ORDER.find(f => !newState[f]);
 
@@ -458,8 +789,6 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
         time:        "What's the preferred departure time? (e.g. 09:00, morning, any time)",
     };
 
-    // Prefer the LLM's message when it returned ASK (friendly phrasing), but never
-    // use a generic CHAT response when there are still required fields to collect.
     const responseMsg = (parsed.type === 'ASK' && parsed.message)
         ? parsed.message
         : missingField

@@ -120,7 +120,7 @@ const ResolveCard = ({ mode, originName, destName, originOptions, destOptions, o
   );
 
   return (
-    <div className="p-3 rounded-2xl rounded-tl-none" style={{ background: '#1F2937', border: '1px solid #374151', maxWidth: '95%' }}>
+    <div className="p-3.5 rounded-2xl rounded-tl-none animate-fade-in" style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(148,163,184,0.12)', maxWidth: '95%' }}>
       <div className="flex items-center gap-1.5 mb-3">
         {isAir ? <Plane size={11} style={{ color: accent }} /> : <Anchor size={11} style={{ color: accent }} />}
         <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: accent }}>
@@ -132,10 +132,10 @@ const ResolveCard = ({ mode, originName, destName, originOptions, destOptions, o
       <button
         disabled={!ready}
         onClick={() => ready && onConfirm(pickedOrigin, pickedDest)}
-        className="w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+        className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
         style={{
-          background: ready ? accent : '#374151',
-          color:      ready ? '#fff' : '#6B7280',
+          background: ready ? 'linear-gradient(135deg, #00C2FF 0%, #0088FF 100%)' : 'rgba(255,255,255,0.05)',
+          color:      ready ? '#041019' : '#6B7280',
           cursor:     ready ? 'pointer' : 'not-allowed',
         }}
       >
@@ -147,9 +147,9 @@ const ResolveCard = ({ mode, originName, destName, originOptions, destOptions, o
 
 // ── Thinking dots ─────────────────────────────────────────────────────────────
 const ThinkingDots = () => (
-  <div className="flex items-center gap-1 px-4 py-3 rounded-2xl rounded-tl-none" style={{ background: '#1F2937', border: '1px solid #374151' }}>
+  <div className="flex items-center gap-1 px-4 py-3 rounded-2xl rounded-tl-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.12)' }}>
     {[0, 1, 2].map(i => (
-      <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#3B82F6', animationDelay: `${i * 0.15}s` }} />
+      <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--accent)', animationDelay: `${i * 0.15}s` }} />
     ))}
   </div>
 );
@@ -208,7 +208,7 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tr-none text-xs font-semibold leading-relaxed"
-          style={{ background: '#3B82F6', color: '#fff' }}>
+          style={{ background: 'linear-gradient(135deg, #00C2FF 0%, #0088FF 100%)', color: '#041019' }}>
           {msg.text}
         </div>
       </div>
@@ -218,8 +218,8 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
   if (msg.role === 'error') {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
-          style={{ background: 'rgba(239,68,68,0.1)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed animate-fade-in"
+          style={{ background: 'rgba(239,68,68,0.08)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.2)' }}>
           {msg.text}
         </div>
       </div>
@@ -228,9 +228,9 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
 
   if (msg.role === 'mode-select') {
     return (
-      <div className="flex justify-start flex-col gap-2">
+      <div className="flex justify-start flex-col gap-2 animate-fade-in">
         <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
-          style={{ background: '#1F2937', color: '#D1D5DB', border: '1px solid #374151' }}>
+          style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
           {msg.text}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -249,9 +249,9 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
 
   if (msg.role === 'clarify') {
     return (
-      <div className="flex justify-start flex-col gap-2">
+      <div className="flex justify-start flex-col gap-2 animate-fade-in">
         <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
-          style={{ background: '#1F2937', color: '#D1D5DB', border: '1px solid #374151' }}>
+          style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
           {msg.text}
         </div>
         {msg.options?.length > 0 && (
@@ -277,7 +277,7 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
   if (msg.role === 'complete') {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[92%] px-3.5 py-3 rounded-2xl rounded-tl-none text-xs leading-relaxed"
+        <div className="max-w-[92%] px-3.5 py-3 rounded-2xl rounded-tl-none text-xs leading-relaxed animate-fade-in"
           style={{ background: 'rgba(34,197,94,0.08)', color: '#86EFAC', border: '1px solid rgba(34,197,94,0.2)' }}>
           <div className="flex items-center gap-1.5 mb-1">
             <CheckCircle2 size={12} style={{ color: '#22C55E' }} />
@@ -291,9 +291,9 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
 
   if (msg.role === 'resolve') {
     return (
-      <div className="flex justify-start flex-col gap-2">
+      <div className="flex justify-start flex-col gap-2 animate-fade-in">
         <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
-          style={{ background: '#1F2937', color: '#D1D5DB', border: '1px solid #374151' }}>
+          style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
           {msg.text}
         </div>
         <ResolveCard
@@ -311,8 +311,8 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
   // Standard AI message
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
-        style={{ background: '#1F2937', color: '#D1D5DB', border: '1px solid #374151' }}>
+      <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed animate-fade-in"
+        style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
         {msg.text}
       </div>
     </div>
@@ -395,6 +395,7 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
             source: data.source,
             destination: data.destination,
             mode: updatedState.mode,
+            shipment: data.shipment
           });
           onClose?.();
         }, 1200);
@@ -508,7 +509,12 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
         const saved = saveRouteToHistory({ state: finalState, source: data.source, destination: data.destination });
         onRouteSaved?.(saved);
         setTimeout(() => {
-          onRouteGenerated?.({ source: data.source, destination: data.destination, mode: finalState.mode });
+          onRouteGenerated?.({
+            source: data.source,
+            destination: data.destination,
+            mode: finalState.mode,
+            shipment: data.shipment
+          });
           onClose?.();
         }, 1200);
       } else {
@@ -548,12 +554,14 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
         if (e.results[i].isFinal) {
           const t = e.results[i][0].transcript;
           setLiveTranscript('');
+          setInput('');
           handleSend(t);
         } else {
           interim += e.results[i][0].transcript;
         }
       }
       setLiveTranscript(interim);
+      setInput(interim);
     };
     sr.start();
   }, [isListening, handleSend, addMsg]);
@@ -573,10 +581,9 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: 0.6 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[1100]"
-            style={{ background: 'rgba(0,0,0,0.4)' }}
+            className="absolute inset-0 z-[1100] bg-black/60 backdrop-blur-sm"
             onClick={onClose}
           />
 
@@ -586,8 +593,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="absolute right-0 top-0 bottom-0 z-[1200] flex flex-col"
-            style={{ width: 360, background: 'var(--surface)', borderLeft: '1px solid var(--border)' }}
+            className="absolute right-0 top-0 bottom-0 z-[1200] flex flex-col animate-fade-in"
+            style={{ width: 360, background: '#0B1220', borderLeft: '1px solid var(--border)' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -694,9 +701,9 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
             </AnimatePresence>
 
             {/* Input row */}
-            <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid #374151' }}>
-              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl transition-all ${isListening ? 'border-red-500' : 'border-transparent focus-within:border-blue-500'}`}
-                style={{ background: '#1F2937', border: `2px solid ${isListening ? '#EF4444' : '#374151'}` }}>
+            <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid rgba(148,163,184,0.12)' }}>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-2xl transition-all ${isListening ? 'border-red-500' : 'border-transparent focus-within:border-cyan-400'}`}
+                style={{ background: '#0B1220', border: `2px solid ${isListening ? '#EF4444' : 'rgba(148,163,184,0.12)'}` }}>
                 <input
                   ref={inputRef}
                   value={input}
@@ -704,8 +711,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isThinking) { e.preventDefault(); handleSend(); } }}
                   placeholder={isListening ? 'Listening…' : isThinking ? 'Routy is thinking…' : 'Type your message…'}
                   disabled={isListening || isThinking}
-                  className="flex-1 bg-transparent outline-none text-xs font-medium"
-                  style={{ color: '#F9FAFB', caretColor: '#3B82F6' }}
+                  className="flex-1 bg-transparent outline-none text-xs font-semibold"
+                  style={{ color: '#F9FAFB', caretColor: '#00C2FF' }}
                 />
 
                 {/* Mic */}
@@ -727,8 +734,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
                   disabled={!input.trim() || isThinking}
                   className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
                   style={{
-                    background: input.trim() && !isThinking ? '#3B82F6' : '#1F2937',
-                    color: input.trim() && !isThinking ? '#fff' : '#374151',
+                    background: input.trim() && !isThinking ? '#00C2FF' : '#0B1220',
+                    color: input.trim() && !isThinking ? '#041019' : '#374151',
                     cursor: input.trim() && !isThinking ? 'pointer' : 'not-allowed',
                   }}>
                   {isThinking
