@@ -145,6 +145,104 @@ const ResolveCard = ({ mode, originName, destName, originOptions, destOptions, o
   );
 };
 
+// ── Interactive Date Picker ──────────────────────────────────────────────────
+const DateSelectBubble = ({ msg, onDateSelect }) => {
+  const [dateVal, setDateVal] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleConfirm = () => {
+    if (!dateVal) return;
+    setDone(true);
+    onDateSelect?.(dateVal);
+  };
+
+  return (
+    <div className="flex justify-start flex-col gap-2 animate-fade-in">
+      <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
+        style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
+        {msg.text}
+      </div>
+      {!done ? (
+        <div className="flex items-center gap-2 p-2 rounded-xl max-w-[95%] animate-fade-in"
+          style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(148,163,184,0.12)' }}>
+          <input
+            type="date"
+            value={dateVal}
+            onChange={e => setDateVal(e.target.value)}
+            className="bg-[#0B1220] border border-cyan-500/30 rounded-lg px-2.5 py-1.5 text-xs text-[#F9FAFB] outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 min-w-[130px] flex-1"
+            style={{ colorScheme: 'dark' }}
+          />
+          <button
+            onClick={handleConfirm}
+            disabled={!dateVal}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+            style={{
+              background: dateVal ? 'linear-gradient(135deg, #00C2FF 0%, #0088FF 100%)' : 'rgba(255,255,255,0.05)',
+              color: dateVal ? '#041019' : '#6B7280',
+              cursor: dateVal ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      ) : (
+        <div className="text-[10px] italic font-semibold px-1" style={{ color: '#00C2FF' }}>
+          Date confirmed: {dateVal}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Interactive Time Picker ──────────────────────────────────────────────────
+const TimeSelectBubble = ({ msg, onTimeSelect }) => {
+  const [timeVal, setTimeVal] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleConfirm = () => {
+    if (!timeVal) return;
+    setDone(true);
+    onTimeSelect?.(timeVal);
+  };
+
+  return (
+    <div className="flex justify-start flex-col gap-2 animate-fade-in">
+      <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-none text-xs leading-relaxed"
+        style={{ background: 'rgba(255,255,255,0.04)', color: '#CBD5E1', border: '1px solid rgba(148,163,184,0.12)' }}>
+        {msg.text}
+      </div>
+      {!done ? (
+        <div className="flex items-center gap-2 p-2 rounded-xl max-w-[95%] animate-fade-in"
+          style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(148,163,184,0.12)' }}>
+          <input
+            type="time"
+            value={timeVal}
+            onChange={e => setTimeVal(e.target.value)}
+            className="bg-[#0B1220] border border-cyan-500/30 rounded-lg px-2.5 py-1.5 text-xs text-[#F9FAFB] outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 min-w-[130px] flex-1"
+            style={{ colorScheme: 'dark' }}
+          />
+          <button
+            onClick={handleConfirm}
+            disabled={!timeVal}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+            style={{
+              background: timeVal ? 'linear-gradient(135deg, #00C2FF 0%, #0088FF 100%)' : 'rgba(255,255,255,0.05)',
+              color: timeVal ? '#041019' : '#6B7280',
+              cursor: timeVal ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      ) : (
+        <div className="text-[10px] italic font-semibold px-1" style={{ color: '#00C2FF' }}>
+          Time confirmed: {timeVal}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Thinking dots ─────────────────────────────────────────────────────────────
 const ThinkingDots = () => (
   <div className="flex items-center gap-1 px-4 py-3 rounded-2xl rounded-tl-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.12)' }}>
@@ -203,7 +301,7 @@ const StateProgress = ({ state }) => {
 };
 
 // ── Message bubble ────────────────────────────────────────────────────────────
-const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) => {
+const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm, onDateSelect, onTimeSelect }) => {
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -245,6 +343,14 @@ const MessageBubble = ({ msg, onPortSelect, onModeSelect, onResolveConfirm }) =>
         </div>
       </div>
     );
+  }
+
+  if (msg.role === 'date-select') {
+    return <DateSelectBubble msg={msg} onDateSelect={onDateSelect} />;
+  }
+
+  if (msg.role === 'time-select') {
+    return <TimeSelectBubble msg={msg} onTimeSelect={onTimeSelect} />;
   }
 
   if (msg.role === 'clarify') {
@@ -417,11 +523,17 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
           pendingState:  updatedState,
         });
       } else if (data.type === 'ASK') {
-        // If asking for mode and none set yet, show mode chips
         const msgLower = data.message?.toLowerCase() || '';
         const isModeQ = !updatedState.mode && (msgLower.includes('mode') || msgLower.includes('transport') || msgLower.includes('sea') || msgLower.includes('air'));
+        const isDateQ = msgLower.includes('date') || msgLower.includes('when') || (!updatedState.date && updatedState.mode && updatedState.origin && updatedState.destination);
+        const isTimeQ = msgLower.includes('time') || msgLower.includes('departure') || (updatedState.date && !updatedState.time);
+        
         if (isModeQ) {
           addMsg('mode-select', data.message);
+        } else if (isDateQ) {
+          addMsg('date-select', data.message);
+        } else if (isTimeQ) {
+          addMsg('time-select', data.message);
         } else {
           addMsg('ai', data.message);
         }
@@ -430,57 +542,51 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
       }
     } catch (err) {
       console.error('[RoutyChatPanel] Chat error details:', err.response || err);
-      addMsg('error', 'Connection issue — please try again.');
+      
+      // Smart offline fallback
+      const nextQ = !stateToSend.mode
+        ? 'Which transport mode — Sea, Air, or Road?'
+        : !stateToSend.origin
+        ? 'Where would you like to ship from?'
+        : !stateToSend.destination
+        ? 'Great choice! Now, where are you shipping to?'
+        : !stateToSend.date
+        ? 'What date would you like to ship? (e.g. June 15, next Monday, or ASAP)'
+        : !stateToSend.time
+        ? "What's the preferred departure time? (e.g. 09:00, morning, any time)"
+        : 'Almost there — let me calculate your route.';
+
+      const msgLower = nextQ.toLowerCase();
+      const isModeQ = !stateToSend.mode && (msgLower.includes('mode') || msgLower.includes('transport') || msgLower.includes('sea') || msgLower.includes('air'));
+      const isDateQ = msgLower.includes('date') || msgLower.includes('when') || (!stateToSend.date && stateToSend.mode && stateToSend.origin && stateToSend.destination);
+      const isTimeQ = msgLower.includes('time') || msgLower.includes('departure') || (stateToSend.date && !stateToSend.time);
+      
+      if (isModeQ) {
+        addMsg('mode-select', nextQ);
+      } else if (isDateQ) {
+        addMsg('date-select', nextQ);
+      } else if (isTimeQ) {
+        addMsg('time-select', nextQ);
+      } else {
+        addMsg('ai', nextQ);
+      }
     } finally {
       setIsThinking(false);
     }
   }, [input, isThinking, convState, convHistory, addMsg, onRouteGenerated, onClose, onRouteSaved]);
 
   const handlePortSelect = useCallback((portName, field) => {
-    addMsg('user', portName);
     const stateOverride = field === 'origin' ? { origin: portName } : { destination: portName };
-    const updatedState = { ...convState, ...stateOverride };
-    setConvState(updatedState);
-    setIsThinking(true);
+    handleSend(portName, stateOverride);
+  }, [handleSend]);
 
-    // Always send to backend — let server decide next step (may need date/time still)
-    axios.post(`${BASE_URL}/api/ai/agent/chat`, {
-      message: `I've selected ${portName} as my ${field}`,
-      state: updatedState,
-      history: convHistory,
-    }, { timeout: 30000 }).then(res => {
-      const data = res.data;
-      const finalState = { ...updatedState, ...(data.state || {}) };
-      setConvState(finalState);
-      if (data.type === 'COMPLETE' && data.source && data.destination) {
-        addMsg('complete', data.message);
-        const saved = saveRouteToHistory({ state: finalState, source: data.source, destination: data.destination });
-        onRouteSaved?.(saved);
-        setTimeout(() => { onRouteGenerated?.({ source: data.source, destination: data.destination, mode: finalState.mode }); onClose?.(); }, 1200);
-      } else if (data.type === 'RESOLVE') {
-        addMsg('resolve', data.message, {
-          mode: data.mode, originName: data.originName, destName: data.destName,
-          originOptions: data.originOptions || [], destOptions: data.destOptions || [],
-          pendingState: finalState,
-        });
-      } else {
-        addMsg('ai', data.message);
-      }
-    }).catch((err) => {
-      console.error('[RoutyChatPanel] Offline fallback triggered due to error:', err.response || err);
-      // Offline fallback — give context-aware next question
-      const nextQ = !updatedState.destination
-        ? 'Great choice! Now, where are you shipping to?'
-        : !updatedState.mode
-        ? 'Which transport mode — Sea, Air, or Road?'
-        : !updatedState.date
-        ? 'What date would you like to ship?'
-        : !updatedState.time
-        ? "What's the preferred departure time?"
-        : 'Almost there — let me calculate your route.';
-      addMsg('ai', nextQ);
-    }).finally(() => setIsThinking(false));
-  }, [convState, convHistory, addMsg, onRouteGenerated, onClose, onRouteSaved]);
+  const handleDateSelect = useCallback((date) => {
+    handleSend(date, { date });
+  }, [handleSend]);
+
+  const handleTimeSelect = useCallback((time) => {
+    handleSend(time, { time });
+  }, [handleSend]);
 
   const handleConfirmResolve = useCallback(async (pickedOrigin, pickedDest, pendingState) => {
     const isAir = pendingState?.mode === 'air';
@@ -531,12 +637,11 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
 
   const handleModeSelect = useCallback((mode) => {
     const modeLabels = { sea: 'Sea (maritime)', air: 'Air freight', truck: 'Road' };
-    addMsg('user', modeLabels[mode] || mode);
     const updatedState = { ...convState, mode };
     setConvState(updatedState);
     // Feed back to agent
     handleSend(modeLabels[mode] || mode, { mode });
-  }, [convState, addMsg, handleSend]);
+  }, [convState, handleSend]);
 
   const startVoice = useCallback(() => {
     const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
@@ -646,6 +751,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
                   onPortSelect={handlePortSelect}
                   onModeSelect={handleModeSelect}
                   onResolveConfirm={handleConfirmResolve}
+                  onDateSelect={handleDateSelect}
+                  onTimeSelect={handleTimeSelect}
                 />
               ))}
 
