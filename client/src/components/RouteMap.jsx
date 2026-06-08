@@ -263,6 +263,55 @@ const NavigationSimulator = ({ coords, isActive, isNavigating, speedMultiplier, 
   return <Marker position={position} icon={navIcon} zIndexOffset={6000} />;
 };
 
+const makeAirportMarkerIcon = (type) =>
+  L.divIcon({
+    html: `<div style="position:relative;width:38px;height:38px;">
+      <div style="width:38px;height:38px;border-radius:50%;
+        background:${type === 'origin' ? '#1a73e8' : '#ea4335'};
+        border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,0.25);
+        display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+        </svg>
+      </div>
+      <div style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;
+        background:${type === 'origin' ? '#34a853' : '#ea4335'};border:2px solid white;"></div>
+    </div>`,
+    className: '', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -22],
+  });
+
+const AnimatedPolyline = ({ positions, children, ...props }) => {
+  const [visibleCoords, setVisibleCoords] = useState([]);
+
+  useEffect(() => {
+    if (!positions || positions.length === 0) {
+      setVisibleCoords([]);
+      return;
+    }
+
+    let currentIdx = 0;
+    const totalPoints = positions.length;
+    const duration = 800; // 0.8s animation
+    const steps = Math.min(totalPoints, 45);
+    const stepInterval = duration / steps;
+    
+    setVisibleCoords([positions[0]]);
+
+    const timer = setInterval(() => {
+      currentIdx = Math.min(currentIdx + Math.ceil(totalPoints / steps), totalPoints);
+      setVisibleCoords(positions.slice(0, currentIdx));
+      if (currentIdx >= totalPoints) {
+        clearInterval(timer);
+      }
+    }, stepInterval);
+
+    return () => clearInterval(timer);
+  }, [positions]);
+
+  if (visibleCoords.length < 2) return null;
+  return <Polyline positions={visibleCoords} {...props}>{children}</Polyline>;
+};
+
 // ── Fit map bounds ───────────────────────────────────────────────
 const MapFitBounds = ({ allRoutes }) => {
   const map = useMap();
@@ -350,7 +399,20 @@ export const RouteMap = ({
   const [portDestCoord,   setPortDestCoord]   = useState(null);
   const [portOriginName,  setPortOriginName]  = useState(null);
   const [portDestName,    setPortDestName]    = useState(null);
+  // Airport-snapped coordinates (air mode only)
+  const [airportOriginCoord, setAirportOriginCoord] = useState(null);
+  const [airportDestCoord, setAirportDestCoord] = useState(null);
+  const [airportOriginName, setAirportOriginName] = useState(null);
+  const [airportDestName, setAirportDestName] = useState(null);
   const [routeError,      setRouteError]      = useState(null);
+  const [activeLayers,    setActiveLayers]    = useState({
+    route: true,
+    weather: true,
+    risks: true,
+    ports: true,
+    airports: true,
+    incidents: true
+  });
 
   useEffect(() => { setShowSeamarks(freightMode === 'ship'); }, [freightMode]);
 
@@ -364,6 +426,10 @@ export const RouteMap = ({
     setPortDestCoord(null);
     setPortOriginName(null);
     setPortDestName(null);
+    setAirportOriginCoord(null);
+    setAirportDestCoord(null);
+    setAirportOriginName(null);
+    setAirportDestName(null);
     setHoveredRoute(null);
     setShowRiskPanel(false);
     setRouteError(null);
@@ -402,6 +468,17 @@ export const RouteMap = ({
         } else {
           setPortOriginCoord(null); setPortDestCoord(null);
           setPortOriginName(null);  setPortDestName(null);
+        }
+
+        if (mode === 'air' && firstRoute?.originAirport && firstRoute?.destAirport) {
+          setAirportOriginCoord([firstRoute.originAirport.lat, firstRoute.originAirport.lon]);
+          setAirportDestCoord([firstRoute.destAirport.lat,   firstRoute.destAirport.lon]);
+          setAirportOriginName(`${firstRoute.originAirport.name}`);
+          setAirportDestName(`${firstRoute.destAirport.name}`);
+          console.log(`[MAP] Airport markers: ${firstRoute.originAirport.name} → ${firstRoute.destAirport.name}`);
+        } else {
+          setAirportOriginCoord(null); setAirportDestCoord(null);
+          setAirportOriginName(null);  setAirportDestName(null);
         }
 
         onRouteDataRef.current?.({ allRoutes: processed, activeRouteIndex: 0 });
@@ -469,8 +546,34 @@ export const RouteMap = ({
       };
 
       setAllRoutes([replayedRoute]);
-      setPortOriginCoord(null); setPortDestCoord(null);
-      setPortOriginName(null);  setPortDestName(null);
+      
+      if (replayingShipment.mode === 'sea') {
+        const startPt = [coords[0][1], coords[0][0]];
+        const endPt = [coords[coords.length - 1][1], coords[coords.length - 1][0]];
+        setPortOriginCoord(startPt);
+        setPortDestCoord(endPt);
+        setPortOriginName(replayingShipment.origin);
+        setPortDestName(replayingShipment.destination);
+
+        setAirportOriginCoord(null); setAirportDestCoord(null);
+        setAirportOriginName(null);  setAirportDestName(null);
+      } else if (replayingShipment.mode === 'air') {
+        const startPt = [coords[0][1], coords[0][0]];
+        const endPt = [coords[coords.length - 1][1], coords[coords.length - 1][0]];
+        setAirportOriginCoord(startPt);
+        setAirportDestCoord(endPt);
+        setAirportOriginName(replayingShipment.origin);
+        setAirportDestName(replayingShipment.destination);
+
+        setPortOriginCoord(null); setPortDestCoord(null);
+        setPortOriginName(null);  setPortDestName(null);
+      } else {
+        setPortOriginCoord(null); setPortDestCoord(null);
+        setPortOriginName(null);  setPortDestName(null);
+        setAirportOriginCoord(null); setAirportDestCoord(null);
+        setAirportOriginName(null);  setAirportDestName(null);
+      }
+
       onRouteDataRef.current?.({ allRoutes: [replayedRoute], activeRouteIndex: 0 });
       setRouteError(null);
 
@@ -578,73 +681,88 @@ export const RouteMap = ({
         return (
           <React.Fragment key={route.id}>
             {/* White outline */}
-            <Polyline
-              positions={route.coords}
-              color="white"
-              weight={isActive ? modeStyle.weight + 2 : modeStyle.altWeight + 3}
-              opacity={isActive ? 0.85 : 0.35}
-              lineCap="round"
-              lineJoin="round"
-            />
+            {activeLayers.route && (
+              <AnimatedPolyline
+                positions={route.coords}
+                color="white"
+                weight={isActive ? modeStyle.weight + 2 : modeStyle.altWeight + 3}
+                opacity={isActive ? 0.85 : 0.35}
+                lineCap="round"
+                lineJoin="round"
+              />
+            )}
             {/* Main route line */}
-            <Polyline
-              positions={route.coords}
-              color={color}
-              weight={weight}
-              opacity={opacity}
-              lineCap="round"
-              lineJoin="round"
-              dashArray={dash}
-              eventHandlers={{
-                click:     () => onSetActiveRoute?.(route.id),
-                mouseover: () => setHoveredRoute(route.id),
-                mouseout:  () => setHoveredRoute(null),
-              }}
-            >
-              <Tooltip sticky direction="top" opacity={1} className="!border-0 !shadow-none !p-0 !bg-transparent">
-                <div
-                  className="text-white px-3 py-2 rounded-xl text-xs font-bold shadow-xl pointer-events-none whitespace-nowrap"
-                  style={{ background: isActive ? modeStyle.activeColor : riskLineColor }}
-                >
-                  {durLabel}
-                  {route.summary && <span className="ml-2 opacity-70 font-normal">· {route.summary}</span>}
-                  {!isActive && (
-                    <span
-                      className="ml-2 text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(0,0,0,0.25)' }}
-                    >
-                      {riskSev}
-                    </span>
-                  )}
-                </div>
-              </Tooltip>
-            </Polyline>
+            {activeLayers.route && (
+              <AnimatedPolyline
+                positions={route.coords}
+                color={color}
+                weight={weight}
+                opacity={opacity}
+                lineCap="round"
+                lineJoin="round"
+                dashArray={dash}
+                eventHandlers={{
+                  click:     () => onSetActiveRoute?.(route.id),
+                  mouseover: () => setHoveredRoute(route.id),
+                  mouseout:  () => setHoveredRoute(null),
+                }}
+              >
+                <Tooltip sticky direction="top" opacity={1} className="!border-0 !shadow-none !p-0 !bg-transparent">
+                  <div
+                    className="text-white px-3 py-2 rounded-xl text-xs font-bold shadow-xl pointer-events-none whitespace-nowrap"
+                    style={{ background: isActive ? modeStyle.activeColor : riskLineColor }}
+                  >
+                    {durLabel}
+                    {route.summary && <span className="ml-2 opacity-70 font-normal">· {route.summary}</span>}
+                    {!isActive && (
+                      <span
+                        className="ml-2 text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(0,0,0,0.25)' }}
+                      >
+                        {riskSev}
+                      </span>
+                    )}
+                  </div>
+                </Tooltip>
+              </AnimatedPolyline>
+            )}
 
             {/* Navigation simulator dot */}
-            <NavigationSimulator
-              coords={route.coords}
-              isActive={isActive}
-              isNavigating={isNavigating}
-              speedMultiplier={simSpeed}
-              freightMode={freightMode}
-            />
+            {activeLayers.route && (
+              <NavigationSimulator
+                coords={route.coords}
+                isActive={isActive}
+                isNavigating={isNavigating}
+                speedMultiplier={simSpeed}
+                freightMode={freightMode}
+              />
+            )}
 
             {/* Waypoint intelligence markers (active route only) */}
-            {isActive && route.intelligence?.waypointReports?.map((wp, idx) => {
+            {activeLayers.weather && isActive && route.intelligence?.waypointReports?.map((wp, idx) => {
               const total = route.intelligence.waypointReports.length;
               const pos = route.coords[Math.floor(idx * (route.coords.length - 1) / Math.max(total - 1, 1))];
               if (!isValidCoord(pos)) return null;
               return (
                 <Marker key={`wp-${idx}`} position={pos} icon={makeWaypointIcon(idx + 1, wp.severity === 'CRITICAL')}>
                   <Popup>
-                    <div className="p-1 text-xs">
-                      <div className="font-black mb-0.5" style={{ color: modeStyle.activeColor }}>{wp.place}</div>
-                      <div className="text-slate-600">{wp.weather}</div>
-                      {wp.severity !== 'STABLE' && (
-                        <div className={`mt-1 text-[10px] font-bold uppercase ${wp.severity === 'CRITICAL' ? 'text-red-600' : 'text-amber-600'}`}>
-                          ⚠ {wp.severity}
-                        </div>
-                      )}
+                    <div className="p-2 text-xs text-white bg-slate-950 rounded-xl space-y-1.5 border border-slate-800" style={{ minWidth: '150px' }}>
+                      <div className="font-extrabold text-[13px] border-b border-slate-800 pb-1 text-cyan-400">{wp.place}</div>
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+                        <div>Condition: <span className="font-bold text-slate-200">{wp.condition}</span></div>
+                        <div>Temp: <span className="font-bold text-slate-200">{wp.temp}°C</span></div>
+                        <div>Wind: <span className="font-bold text-slate-200">{wp.wind} km/h</span></div>
+                        <div>Visibility: <span className="font-bold text-slate-200">{wp.visibility || 'N/A'}</span></div>
+                        <div>Rain: <span className="font-bold text-slate-200">{wp.rain || '0 mm'}</span></div>
+                        <div>Storm Risk: <span className="font-bold text-slate-200">{wp.stormRisk || 'Low'}</span></div>
+                      </div>
+                      <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded text-center tracking-wider mt-1 ${
+                        wp.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800/50' :
+                        wp.severity === 'CAUTION' ? 'bg-amber-950 text-amber-400 border border-amber-800/50' :
+                        'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                      }`}>
+                        Hazard: {wp.severity}
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
@@ -653,7 +771,7 @@ export const RouteMap = ({
           </React.Fragment>
         );
       });
-  }, [allRoutes, activeRouteIndex, isNavigating, simSpeed, hoveredRoute, onSetActiveRoute, modeStyle, freightMode]);
+  }, [allRoutes, activeRouteIndex, isNavigating, simSpeed, hoveredRoute, onSetActiveRoute, modeStyle, freightMode, activeLayers]);
 
   const isMaritime = freightMode === 'ship';
   const srcIcon = isMaritime ? portOriginIcon : startPin;
@@ -748,6 +866,29 @@ export const RouteMap = ({
                 </div>
                 OpenSeaMap Overlay
               </button>
+
+              <div className="w-full h-px bg-slate-800/80 my-1" />
+              <p className="text-[8px] font-black uppercase tracking-widest px-0.5 mb-1.5" style={{ color: 'var(--text-secondary)' }}>Intelligence Overlays</p>
+              <div className="space-y-1.5 text-xs text-slate-300 font-bold px-0.5">
+                {[
+                  { id: 'route', label: 'Route Corridor', emoji: '🛣️' },
+                  { id: 'weather', label: 'Weather Metrics', emoji: '🌤️' },
+                  { id: 'risks', label: 'Risk Hotspots', emoji: '⚠️' },
+                  { id: 'ports', label: 'Seaports Network', emoji: '⚓' },
+                  { id: 'airports', label: 'Airports Network', emoji: '✈️' },
+                  { id: 'incidents', label: 'Live Incidents', emoji: '📡' },
+                ].map(layer => (
+                  <label key={layer.id} className="flex items-center gap-2.5 cursor-pointer py-0.5 select-none hover:text-white transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={activeLayers[layer.id]}
+                      onChange={(e) => setActiveLayers(prev => ({ ...prev, [layer.id]: e.target.checked }))}
+                      className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/20 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{layer.emoji} {layer.label}</span>
+                  </label>
+                ))}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -800,6 +941,72 @@ export const RouteMap = ({
         )}
       </AnimatePresence>
 
+      {/* Progressive loading overlay HUD */}
+      <AnimatePresence>
+        {(loading || activeIntel?.loading) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute bottom-24 left-3 z-[1050] p-4 rounded-2xl border backdrop-blur-md shadow-2xl"
+            style={{
+              background: 'rgba(15,23,42,0.85)',
+              borderColor: 'rgba(55,65,81,0.7)',
+              width: '280px'
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">
+                Intelligence Engine Sync
+              </span>
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-cyan-400 animate-spin" />
+            </div>
+            
+            <div className="space-y-2.5 text-[11px] font-bold">
+              {/* Step 1: Route */}
+              <div className="flex items-center gap-2.5 text-emerald-400">
+                {!loading ? (
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[10px]">✓</div>
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[10px] animate-pulse">⏳</div>
+                )}
+                <span className={loading ? 'text-cyan-400' : 'text-emerald-400'}>
+                  {loading ? 'Loading Route Geometry...' : 'Route Geometry Loaded'}
+                </span>
+              </div>
+
+              {/* Step 2: Weather */}
+              <div className={`flex items-center gap-2.5 ${!loading && activeIntel?.loading ? 'text-cyan-400' : loading ? 'text-slate-500' : 'text-emerald-400'}`}>
+                {loading ? (
+                  <div className="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">○</div>
+                ) : activeIntel?.loading ? (
+                  <div className="w-4 h-4 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[10px] animate-pulse">⏳</div>
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[10px]">✓</div>
+                )}
+                <span>
+                  {loading ? 'Loading Weather Checkpoints...' : activeIntel?.loading ? 'Loading Weather Checkpoints...' : 'Weather Checkpoints Loaded'}
+                </span>
+              </div>
+
+              {/* Step 3: Risks */}
+              <div className={`flex items-center gap-2.5 ${!loading && activeIntel?.loading ? 'text-cyan-400' : loading ? 'text-slate-500' : 'text-emerald-400'}`}>
+                {loading ? (
+                  <div className="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">○</div>
+                ) : activeIntel?.loading ? (
+                  <div className="w-4 h-4 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[10px] animate-pulse">⏳</div>
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[10px]">✓</div>
+                )}
+                <span>
+                  {loading ? 'Loading Risk Intelligence...' : activeIntel?.loading ? 'Loading Risk & Threat Intelligence...' : 'Risk & Threat Intelligence Loaded'}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* MAP */}
       <MapContainer center={[25, 15]} zoom={2}
         style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
@@ -816,7 +1023,7 @@ export const RouteMap = ({
         )}
 
         {/* Risk zone threat overlays */}
-        {riskZones.map(zone => {
+        {activeLayers.risks && riskZones.map(zone => {
           const zoneColor = zone.severity === 'CRITICAL' ? '#dc2626'
             : zone.severity === 'HIGH' ? '#ea580c'
             : '#d97706';
@@ -855,51 +1062,83 @@ export const RouteMap = ({
         {mapLayers}
 
         {/* Plot actual event locations returned by GEO_RISK_ENGINE with clustering */}
-        <ClusteredIncidentMarkers events={activeIntel?.events || []} />
-        {/* Origin marker — use snapped port position for sea mode */}
-        {(isMaritime ? portOriginCoord : sourceCoord) && (
-          <Marker
-            position={isMaritime && portOriginCoord ? portOriginCoord : sourceCoord}
-            icon={srcIcon}
-            zIndexOffset={1000}
-          >
-            <Popup><div className="p-1 text-xs">
-              <p className="text-[10px] text-green-600 font-black uppercase mb-0.5">
-                {isMaritime ? 'Origin Port' : 'Origin'}
-              </p>
-              <p className="font-bold text-slate-800">
-                {isMaritime && portOriginName ? portOriginName : selectedSource?.display_name?.split(',')[0]}
-              </p>
-              {isMaritime && portOriginName && (
-                <p className="text-[9px] text-slate-400 mt-0.5 truncate">
-                  Nearest port to {selectedSource?.display_name?.split(',')[0]}
-                </p>
-              )}
-            </div></Popup>
-          </Marker>
+        {activeLayers.incidents && (
+          <ClusteredIncidentMarkers events={activeIntel?.events || []} />
         )}
-        {/* Destination marker — use snapped port position for sea mode */}
-        {(isMaritime ? portDestCoord : destCoord) && (
-          <Marker
-            position={isMaritime && portDestCoord ? portDestCoord : destCoord}
-            icon={dstIcon}
-            zIndexOffset={1000}
-          >
-            <Popup><div className="p-1 text-xs">
-              <p className="text-[10px] text-red-500 font-black uppercase mb-0.5">
-                {isMaritime ? 'Destination Port' : 'Destination'}
-              </p>
-              <p className="font-bold text-slate-800">
-                {isMaritime && portDestName ? portDestName : selectedDestination?.display_name?.split(',')[0]}
-              </p>
-              {isMaritime && portDestName && (
-                <p className="text-[9px] text-slate-400 mt-0.5 truncate">
-                  Nearest port to {selectedDestination?.display_name?.split(',')[0]}
-                </p>
+
+        {/* Dynamic snaps and indicators based on activeLayers */}
+        {(() => {
+          const isMaritime = freightMode === 'ship';
+          const isAir = freightMode === 'air';
+
+          const originPos = isMaritime && portOriginCoord ? portOriginCoord 
+                          : isAir && airportOriginCoord ? airportOriginCoord 
+                          : sourceCoord;
+
+          const destPos = isMaritime && portDestCoord ? portDestCoord 
+                        : isAir && airportDestCoord ? airportDestCoord 
+                        : destCoord;
+
+          const originIcon = isMaritime && activeLayers.ports ? portOriginIcon 
+                           : isAir && activeLayers.airports ? makeAirportMarkerIcon('origin') 
+                           : startPin;
+
+          const destIcon = isMaritime && activeLayers.ports ? portDestIcon 
+                         : isAir && activeLayers.airports ? makeAirportMarkerIcon('dest') 
+                         : endPin;
+
+          return (
+            <>
+              {originPos && (
+                <Marker position={originPos} icon={originIcon} zIndexOffset={1000}>
+                  <Popup>
+                    <div className="p-1 text-xs">
+                      <p className="text-[10px] text-green-600 font-black uppercase mb-0.5">
+                        {isMaritime && activeLayers.ports ? 'Origin Port' 
+                         : isAir && activeLayers.airports ? 'Origin Airport' 
+                         : 'Origin'}
+                      </p>
+                      <p className="font-bold text-slate-800">
+                        {isMaritime ? (portOriginName || selectedSource?.display_name?.split(',')[0])
+                         : isAir ? (airportOriginName || selectedSource?.display_name?.split(',')[0])
+                         : selectedSource?.display_name?.split(',')[0]}
+                      </p>
+                      {((isMaritime && portOriginName) || (isAir && airportOriginName)) && (
+                        <p className="text-[9px] text-slate-400 mt-0.5 truncate">
+                          Nearest {isMaritime ? 'port' : 'airport'} to {selectedSource?.display_name?.split(',')[0]}
+                        </p>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
               )}
-            </div></Popup>
-          </Marker>
-        )}
+
+              {destPos && (
+                <Marker position={destPos} icon={destIcon} zIndexOffset={1000}>
+                  <Popup>
+                    <div className="p-1 text-xs">
+                      <p className="text-[10px] text-red-500 font-black uppercase mb-0.5">
+                        {isMaritime && activeLayers.ports ? 'Destination Port' 
+                         : isAir && activeLayers.airports ? 'Destination Airport' 
+                         : 'Destination'}
+                      </p>
+                      <p className="font-bold text-slate-800">
+                        {isMaritime ? (portDestName || selectedDestination?.display_name?.split(',')[0])
+                         : isAir ? (airportDestName || selectedDestination?.display_name?.split(',')[0])
+                         : selectedDestination?.display_name?.split(',')[0]}
+                      </p>
+                      {((isMaritime && portDestName) || (isAir && airportDestName)) && (
+                        <p className="text-[9px] text-slate-400 mt-0.5 truncate">
+                          Nearest {isMaritime ? 'port' : 'airport'} to {selectedDestination?.display_name?.split(',')[0]}
+                        </p>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </>
+          );
+        })()}
       </MapContainer>
 
       {/* Risk Intelligence Panel — slides in from right */}

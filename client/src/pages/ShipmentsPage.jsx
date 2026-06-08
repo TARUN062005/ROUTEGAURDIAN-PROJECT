@@ -334,7 +334,7 @@ const ShipmentsPage = () => {
 
                 return (
                   <motion.div
-                    key={r.id}
+                    key={`shipment-${r.id || idx}-${idx}`}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.97 }}
@@ -406,6 +406,17 @@ const ShipmentsPage = () => {
                             <p className="text-[8px] font-bold uppercase" style={{ color: '#6B7280' }}>Risk</p>
                           </div>
                         )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShipmentToDelete(r);
+                            setDeleteModalOpen(true);
+                          }}
+                          className="flex items-center justify-center p-2 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
+                          title="Delete Shipment"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                         <ChevronRight
                           size={16}
                           style={{ color: '#374151', transform: isSelected ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}

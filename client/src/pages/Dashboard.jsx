@@ -132,14 +132,14 @@ const MyRoutesSection = ({ routes, onLoad, onClear, isExpanded, onToggle }) => {
             className="overflow-hidden"
           >
             <div className="space-y-1.5 mt-1">
-              {routes.slice(0, 8).map(r => {
+              {routes.slice(0, 8).map((r, idx) => {
                 const ModeIcon = MODE_ICONS[r.mode] || Anchor;
                 const modeColor = MODE_COLORS[r.mode] || ACCENT;
                 const sev = r.severity;
                 const sevColor = sev === 'CRITICAL' ? '#EF4444' : sev === 'CAUTION' ? '#F59E0B' : '#22C55E';
                 return (
                   <motion.button
-                    key={r.id}
+                    key={`my-route-${r.id || idx}-${idx}`}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onLoad(r)}
@@ -969,6 +969,43 @@ const Dashboard = () => {
                         );
                       })}
                     </div>
+
+                    {/* Weather Timeline */}
+                    <div className="w-full h-px bg-slate-800/60 my-1" />
+                    <p className="text-[8px] font-black uppercase tracking-widest leading-none text-slate-500 mt-1 mb-1">
+                      Weather Timeline Along Corridor
+                    </p>
+                    <div className="space-y-1.5 max-h-[190px] overflow-y-auto pr-1 scrollbar-thin">
+                      {intel.waypointReports.map((wp, i) => {
+                        const WIcon = getWeatherIcon(wp.weather);
+                        const parts = (wp.weather || 'Clear • 25°C').split(' • ');
+                        const hazardColor = wp.severity === 'CRITICAL' ? 'text-red-400' : wp.severity === 'CAUTION' ? 'text-amber-400' : 'text-emerald-400';
+                        const hazardBg = wp.severity === 'CRITICAL' ? 'rgba(239,68,68,0.1)' : wp.severity === 'CAUTION' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.06)';
+                        const hazardBorder = wp.severity === 'CRITICAL' ? 'rgba(239,68,68,0.2)' : wp.severity === 'CAUTION' ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.15)';
+                        
+                        return (
+                          <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-slate-950/40 border border-slate-850 text-xs">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-[9px] font-black text-slate-500 w-4 text-right">#{i + 1}</span>
+                              <WIcon size={14} className="text-cyan-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold text-white truncate">{wp.place}</p>
+                                <p className="text-[9px] text-slate-400 leading-none mt-0.5">{wp.condition || parts[0]} · {wp.temp}°C</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 text-right flex-shrink-0">
+                              <div className="text-[9px] text-slate-400 leading-tight">
+                                <div>Wind: {wp.wind} km/h</div>
+                                <div>Risk: {wp.stormRisk || 'Low'}</div>
+                              </div>
+                              <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border" style={{ color: hazardColor, background: hazardBg, borderColor: hazardBorder }}>
+                                {wp.severity}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -1348,6 +1385,8 @@ const Dashboard = () => {
                   <ShipmentCreationFlow
                     freightMode={freightMode}
                     onLocationSelect={(src, dest) => {
+                      setOriginalAnalysis(null);
+                      setReplayingShipment(null);
                       setSelectedSource(src);
                       setSelectedDest(dest);
                       setIsMissionControlOpen(false); // Auto-close

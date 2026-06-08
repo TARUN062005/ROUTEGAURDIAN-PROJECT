@@ -7,6 +7,24 @@ const AuthContext = createContext(null);
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL || '';
 axios.defaults.withCredentials = true;
 
+// Request interceptor to attach X-XSRF-TOKEN header on mutating requests
+axios.interceptors.request.use(
+  (config) => {
+    const getCookie = (name) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    };
+    const xsrfToken = getCookie('XSRF-TOKEN');
+    if (xsrfToken && ['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase())) {
+      config.headers['X-XSRF-TOKEN'] = xsrfToken;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 export const API = axios;
 
 export const useAuth = () => {

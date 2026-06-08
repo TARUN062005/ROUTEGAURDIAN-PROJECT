@@ -28,8 +28,8 @@ const FIELD_ICONS = {
 };
 
 const WELCOME = {
-  id: 0, role: 'ai',
-  text: "Hi, I'm Routy! I'll help you plan your shipment step by step. Where would you like to ship from?",
+  id: 0, role: 'mode-select',
+  text: "Hi, I'm Routy! I'll help you plan your shipment step by step. Which mode of transport do you want to use? (Road, Sea, or Air)",
 };
 
 const SUGGESTIONS = [
@@ -342,8 +342,7 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
   // Reset on open
   useEffect(() => {
     if (isOpen) {
-      const initialMode = MODE_MAP[freightMode] || 'sea';
-      const initState = { origin: null, destination: null, mode: initialMode, date: null, time: null, cargo: null, priority: null, confirmedSource: null, confirmedDest: null };
+      const initState = { origin: null, destination: null, mode: null, date: null, time: null, cargo: null, priority: null, confirmedSource: null, confirmedDest: null };
       setConvState(initState);
       setMessages([WELCOME]);
       setConvHistory([]);
@@ -430,6 +429,7 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
         addMsg('ai', data.message || "Got it, let's keep going.");
       }
     } catch (err) {
+      console.error('[RoutyChatPanel] Chat error details:', err.response || err);
       addMsg('error', 'Connection issue — please try again.');
     } finally {
       setIsThinking(false);
@@ -466,7 +466,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
       } else {
         addMsg('ai', data.message);
       }
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('[RoutyChatPanel] Offline fallback triggered due to error:', err.response || err);
       // Offline fallback — give context-aware next question
       const nextQ = !updatedState.destination
         ? 'Great choice! Now, where are you shipping to?'
@@ -520,7 +521,8 @@ const RoutyChatPanel = ({ isOpen, onClose, onRouteGenerated, freightMode = 'ship
       } else {
         addMsg('ai', data.message || 'Route confirmed! Calculating...');
       }
-    } catch {
+    } catch (err) {
+      console.error('[RoutyChatPanel] Confirm resolve error details:', err.response || err);
       addMsg('error', 'Could not confirm selection — please try again.');
     } finally {
       setIsThinking(false);
