@@ -12,6 +12,15 @@ const SEV = {
 
 const TYPE_ICON = { conflict: '⚔️', piracy: '🏴‍☠️', dispute: '🚩', weather: '🌩️' };
 
+const getDomain = (url) => {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+};
+
 const RiskGauge = ({ score, severity }) => {
   const cfg = SEV[severity] || SEV.STABLE;
   const r = 36, circ = 2 * Math.PI * r;
@@ -289,11 +298,42 @@ export const RiskIntelPanel = ({
                           }));
                         }}
                       >
-                        {image && (
-                          <a href={link || '#'} target={link ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-2">
-                            <img src={image} alt={title} loading="lazy" className="w-full h-24 object-cover hover:scale-105 transition-transform duration-300" />
-                          </a>
-                        )}
+                        {(() => {
+                          if (image) {
+                            return (
+                              <a href={link || '#'} target={link ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-2">
+                                <img src={image} alt={title} loading="lazy" className="w-full h-24 object-cover hover:scale-105 transition-transform duration-300" />
+                              </a>
+                            );
+                          }
+                          const domain = getDomain(link);
+                          const favicon = domain ? `https://www.google.com/s2/favicons?sz=64&domain=${domain}` : null;
+                          const colors = {
+                            CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
+                            HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
+                            MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
+                            CAUTION:  { from: '#78350f', to: '#f59e0b', border: 'rgba(245,158,11,0.25)', text: '#f59e0b' },
+                            STABLE:   { from: '#064e3b', to: '#22c55e', border: 'rgba(34,197,94,0.25)', text: '#22c55e' },
+                          };
+                          const theme = colors[severityUpper] || colors.MODERATE;
+                          return (
+                            <a href={link || '#'} target={link ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-2 border" style={{ borderColor: theme.border }}>
+                              <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 p-2"
+                                style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                                {favicon ? (
+                                  <img src={favicon} alt={publisher || domain} className="w-8 h-8 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                                ) : (
+                                  <svg className="w-6 h-6 opacity-60" viewBox="0 0 24 24" fill="none" stroke={theme.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                  </svg>
+                                )}
+                                {publisher && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{publisher}</span>}
+                              </div>
+                            </a>
+                          );
+                        })()}
                         <div className="flex items-start gap-2 mb-2">
                           <Newspaper size={11} className="flex-shrink-0 mt-0.5" style={{ color: aCfg.color }} />
                           <p className="text-[11px] font-semibold flex-1 leading-snug hover:text-cyan-400 transition-colors" style={{ color: 'var(--text-primary)' }}>

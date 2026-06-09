@@ -45,6 +45,74 @@ const DashboardLayout = () => {
     setIsProfileOpen(false);
   }, [location.pathname]);
 
+  // On layout mount, trigger Render warmup
+  useEffect(() => {
+    if (!user) return;
+    const triggerWarmup = async () => {
+      try {
+        await axios.post("/api/ai/warmup", {}, { withCredentials: true });
+        console.log("[Warmup] Wakeup ping sent to backend");
+      } catch (err) {
+        console.warn("[Warmup] Wakeup ping failed:", err.message);
+      }
+    };
+    triggerWarmup();
+  }, [user]);
+
+  // Active User Heartbeat Tracking using visibility and focus
+  useEffect(() => {
+    if (!user) return;
+
+    let lastPing = 0;
+    let intervalId = null;
+
+    const sendHeartbeat = async () => {
+      const now = Date.now();
+      // Rate-limit pings to at most once per 90 seconds
+      if (now - lastPing < 90000) return;
+      
+      try {
+        await axios.post("/api/user/active-ping", {}, { withCredentials: true });
+        lastPing = now;
+        console.log("[Heartbeat] Active ping sent to server");
+      } catch (err) {
+        console.warn("[Heartbeat] Active ping failed:", err.message);
+      }
+    };
+
+    const handleActivity = () => {
+      if (document.visibilityState === "visible" && document.hasFocus()) {
+        sendHeartbeat();
+        // Start or ensure interval is running
+        if (!intervalId) {
+          intervalId = setInterval(sendHeartbeat, 2 * 60 * 1000); // 2 minutes
+        }
+      } else {
+        // Tab is hidden or blurred, clear interval
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
+    };
+
+    // Initial check and setup listeners
+    handleActivity();
+    window.addEventListener("visibilitychange", handleActivity);
+    window.addEventListener("focus", handleActivity);
+    window.addEventListener("blur", handleActivity);
+
+    // Clean up
+    return () => {
+      window.removeEventListener("visibilitychange", handleActivity);
+      window.removeEventListener("focus", handleActivity);
+      window.removeEventListener("blur", handleActivity);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [user]);
+
   const handleLogout = () => { logout(); navigate("/"); };
 
   // Pages where main content is full-height (no scroll, map fills space)

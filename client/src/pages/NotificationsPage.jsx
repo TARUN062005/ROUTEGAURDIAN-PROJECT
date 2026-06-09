@@ -279,37 +279,62 @@ const NotificationsPage = () => {
                   }}
                 >
                   {/* Event Image */}
-                  {n.image_url ? (
-                    <a href={n.source_url || '#'} target={n.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="relative h-44 overflow-hidden bg-slate-900 block">
-                      <img
-                        src={n.image_url}
-                        alt={n.title}
-                        loading="lazy"
-                        className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                      />
-                      <div className="absolute top-3 right-3">
-                        <span
-                          className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
-                          style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
-                        >
-                          {n.severity}
-                        </span>
-                      </div>
-                    </a>
-                  ) : (
-                    <div className="relative h-44 bg-slate-800/40 flex flex-col items-center justify-center text-slate-500 gap-2 border-b border-slate-700/50">
-                      <Globe size={24} className="opacity-40" />
-                      <span className="text-[10px] uppercase font-black tracking-wider opacity-60">No Media Cover</span>
-                      <div className="absolute top-3 right-3">
-                        <span
-                          className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
-                          style={{ background: sevConf.bg, color: sevConf.color }}
-                        >
-                          {n.severity}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  {(() => {
+                    let domain = '';
+                    try {
+                      if (n.source_url) {
+                        domain = new URL(n.source_url).hostname;
+                      }
+                    } catch {}
+                    const favicon = domain ? `https://www.google.com/s2/favicons?sz=64&domain=${domain}` : null;
+                    if (n.image_url) {
+                      return (
+                        <a href={n.source_url || '#'} target={n.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="relative h-44 overflow-hidden bg-slate-900 block">
+                          <img
+                            src={n.image_url}
+                            alt={n.title}
+                            loading="lazy"
+                            className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                          />
+                          <div className="absolute top-3 right-3">
+                            <span
+                              className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
+                              style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
+                            >
+                              {n.severity}
+                            </span>
+                          </div>
+                        </a>
+                      );
+                    }
+                    const colors = {
+                      CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: "rgba(239,68,68,0.25)", text: '#ef4444' },
+                      HIGH:     { from: '#7c2d12', to: '#f97316', border: "rgba(249,115,22,0.25)", text: '#f97316' },
+                      MODERATE: { from: '#064e3b', to: '#22c55e', border: "rgba(34,197,94,0.25)", text: '#22c55e' },
+                    };
+                    const theme = colors[n.severity] || colors.MODERATE;
+                    return (
+                      <a href={n.source_url || '#'} target={n.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="relative h-44 overflow-hidden block border-b" style={{ borderColor: theme.border }}>
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 p-4"
+                          style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                          {favicon ? (
+                            <img src={favicon} alt={n.source || domain} className="w-10 h-10 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                          ) : (
+                            <Globe size={24} style={{ color: theme.text }} className="opacity-60 animate-pulse" />
+                          )}
+                          {n.source && <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">{n.source}</span>}
+                          <div className="absolute top-3 right-3">
+                            <span
+                              className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg"
+                              style={{ background: sevConf.bg, color: sevConf.color }}
+                            >
+                              {n.severity}
+                            </span>
+                          </div>
+                        </div>
+                      </a>
+                    );
+                  })()}
 
                   {/* Body Content */}
                   <div className="p-4 flex-1 flex flex-col gap-2">

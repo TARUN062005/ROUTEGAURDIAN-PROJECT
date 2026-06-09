@@ -75,6 +75,20 @@ const cleanEvent = (e) => {
   };
 };
 
+function isValidLocation(q) {
+  if (!q) return false;
+  const words = q.toLowerCase().replace(/[\(\)\[\]\+\*,-\.\/]/g, ' ').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  
+  const INVALID_LOCATION_KEYWORDS = new Set([
+    'sea', 'ship', 'road', 'air', 'flight', 'airplane', 'maritime',
+    'transport', 'cargo', 'rail', 'train', 'ground', 'land', 'truck'
+  ]);
+  
+  const allInvalid = words.every(word => INVALID_LOCATION_KEYWORDS.has(word));
+  return !allInvalid;
+}
+
 // HELPER: Strict Latin Script Enforcer (Protocol v17)
 function sanitizeEn(text, fallback = "Sector") {
   if (!text) return fallback;
@@ -427,7 +441,7 @@ function routePassesNear(checkpoints, zone) {
   return checkpoints.some(cp => hDistKm([cp[0], cp[1]], [zone.lon, zone.lat]) < buffer);
 }
 
-function getCheckpoints(coords, distanceMeters = null) {
+function getCheckpoints(coords, mode) {
   if (!coords || coords.length < 2) return coords || [];
   
   let totalDistKm = 0;
@@ -435,7 +449,24 @@ function getCheckpoints(coords, distanceMeters = null) {
     totalDistKm += hDistKm(coords[i - 1], coords[i]);
   }
   
-  const count = Math.max(2, Math.round(totalDistKm / 50) + 1);
+  // Road: 50-100 km (average 75)
+  // Air: 200-300 km (average 250)
+  // Sea: 250-500 km (average 375)
+  let intervalKm = 75;
+  const m = (mode || '').toLowerCase();
+  if (m === 'air') {
+    intervalKm = 250;
+  } else if (m === 'sea' || m === 'ship') {
+    intervalKm = 375;
+  } else if (m === 'road' || m === 'truck') {
+    intervalKm = 75;
+  }
+
+  let count = Math.max(2, Math.round(totalDistKm / intervalKm) + 1);
+  if (count > 20) {
+    count = 20;
+  }
+
   const result = [];
   const total = coords.length;
   for (let i = 0; i < count; i++) {
@@ -596,7 +627,7 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
     const newsStatus = await harvestNews(query, locNames);
 
     // 2. Extract Key Tactical Nodes (Adaptive Sampling)
-    const checkpoints = getCheckpoints(coords, distanceMeters);
+    const checkpoints = getCheckpoints(coords, 'road');
 
     // 3. Strategic Geographic Resolution (Unique Node Protocol) - Parallelized weather fetches
     const weatherPromises = checkpoints.map(async (p, i) => {
@@ -874,7 +905,7 @@ const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => 
 
 const getWeatherAlongRoute = async (coords, mode) => {
   try {
-    const checkpoints = getCheckpoints(coords);
+    const checkpoints = getCheckpoints(coords, mode);
     if (checkpoints.length === 0) return [];
 
     // Batch Weather Queries to Open-Meteo in a single request!
@@ -1256,7 +1287,7 @@ exports.searchLocation = async (req, res) => {
     const targetMode = (mode || '').toLowerCase().trim();
 
     // 1. Production Input Guard (Protocol v39)
-    if (!q || q.trim().length < 2) {
+    if (!q || q.trim().length < 2 || !isValidLocation(q)) {
       console.log(`[SEARCH TIME] duration=${Date.now() - searchStart}ms`);
       return res.json([]);
     }
@@ -1588,6 +1619,31 @@ exports.createShipment = async (req, res) => {
       cargo, priority, date, time, weatherSummary, riskSummary, aiReport
     } = req.body;
     const { prisma } = require('../utils/dbConnector');
+    const crypto = require('crypto');
+
+    // Compute route hash to prevent duplicates
+    let routeHash = null;
+    if (routeGeometry) {
+      const coords = routeGeometry.coordinates || routeGeometry;
+      if (Array.isArray(coords)) {
+        const cleanCoords = coords.map(p => [
+          parseFloat(p[0]).toFixed(5),
+          parseFloat(p[1]).toFixed(5)
+        ]);
+        const serialized = JSON.stringify(cleanCoords);
+        routeHash = crypto.createHash('sha256').update(serialized).digest('hex');
+      }
+    }
+
+    if (routeHash) {
+      const existing = await prisma.shipment.findFirst({
+        where: { routeHash }
+      });
+      if (existing) {
+        console.log(`[createShipment] Found duplicate shipment with routeHash: ${routeHash}. Bypassing creation.`);
+        return res.json({ success: true, shipment: existing, isDuplicate: true });
+      }
+    }
 
     const shipment = await prisma.shipment.create({
       data: {
@@ -1599,6 +1655,7 @@ exports.createShipment = async (req, res) => {
         riskScore: riskScore != null ? parseFloat(riskScore) : null,
         safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
         routeGeometry: routeGeometry, // stores GeoJSON natively
+        routeHash,
         cargo: cargo || null,
         priority: priority || null,
         date: date || null,
@@ -1695,7 +1752,7 @@ exports.resolvePort = async (req, res) => {
     const name = req.query.name || req.query.q || '';
 
     if (Number.isNaN(lat) || Number.isNaN(lon)) {
-      if (name) {
+      if (name && isValidLocation(name)) {
         const matches = await portResolver.searchByName(name, 5);
         return res.json({
           success: true,
@@ -1705,7 +1762,13 @@ exports.resolvePort = async (req, res) => {
           matches,
         });
       }
-      return res.status(400).json({ error: 'Missing lat/lon' });
+      return res.json({
+        success: true,
+        isPort: false,
+        distanceKm: null,
+        nearestPort: null,
+        matches: [],
+      });
     }
 
     const result = await portResolver.resolve({ lat, lon, name });
@@ -1727,7 +1790,25 @@ exports.resolveAirport = async (req, res) => {
     const lat = parseFloat(req.query.lat);
     const lon = parseFloat(req.query.lon);
     const name = req.query.name || '';
-    if (Number.isNaN(lat) || Number.isNaN(lon)) return res.status(400).json({ error: 'Missing lat/lon' });
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+      if (name && isValidLocation(name)) {
+        const matches = await airportResolver.searchByName(name, 5);
+        return res.json({
+          success: true,
+          isAirport: false,
+          distanceKm: null,
+          nearestAirport: null,
+          matches,
+        });
+      }
+      return res.json({
+        success: true,
+        isAirport: false,
+        distanceKm: null,
+        nearestAirport: null,
+        matches: [],
+      });
+    }
 
     const result = await airportResolver.resolve({ lat, lon, name });
 
@@ -1977,4 +2058,16 @@ Do not write any markdown headers, tags, intro or outro. Just write the article 
     res.json({ success: true, text: title || 'Full article content is available at the source URL.' });
   }
 };
+
+exports.warmup = async (req, res) => {
+  try {
+    const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+    GeoRiskWarmupService.triggerWarmup();
+    return res.json({ success: true, message: 'Warmup initiated' });
+  } catch (error) {
+    console.error('Warmup endpoint error:', error.message);
+    res.status(500).json({ error: 'Warmup failed' });
+  }
+};
+
 

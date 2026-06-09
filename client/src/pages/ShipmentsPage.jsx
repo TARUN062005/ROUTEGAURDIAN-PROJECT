@@ -94,6 +94,7 @@ const ShipmentsPage = () => {
   const [routes, setRoutes]   = useState([]);
   const [selected, setSelected] = useState(null);
   const [filter, setFilter]   = useState('all');
+  const [sortBy, setSortBy]   = useState('date');
   const [loading, setLoading] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [shipmentToDelete, setShipmentToDelete] = useState(null);
@@ -195,9 +196,27 @@ const ShipmentsPage = () => {
     navigate('/dashboard');
   }, [navigate]);
 
-  const filtered = filter === 'all'
-    ? routes
-    : routes.filter(r => (r.mode === filter || (filter === 'sea' && r.mode === 'ship')));
+  const sortedAndFiltered = useMemo(() => {
+    const list = filter === 'all'
+      ? [...routes]
+      : routes.filter(r => (r.mode === filter || (filter === 'sea' && r.mode === 'ship')));
+
+    return list.sort((a, b) => {
+      if (sortBy === 'date') {
+        return b.timestamp - a.timestamp;
+      }
+      if (sortBy === 'distance') {
+        return b.distance - a.distance;
+      }
+      if (sortBy === 'risk') {
+        return (b.riskScore ?? 0) - (a.riskScore ?? 0);
+      }
+      if (sortBy === 'safety') {
+        return (b.safetyScore ?? 0) - (a.safetyScore ?? 0);
+      }
+      return 0;
+    });
+  }, [routes, filter, sortBy]);
 
   const stats = {
     total:    routes.length,
@@ -262,36 +281,61 @@ const ShipmentsPage = () => {
           </div>
         )}
 
-        {/* Filter tabs */}
+        {/* Filter & Sort tabs */}
         {routes.length > 0 && (
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { value: 'all',   label: 'All' },
-              { value: 'sea',   label: 'Maritime' },
-              { value: 'air',   label: 'Air' },
-              { value: 'truck', label: 'Road' },
-            ].map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setFilter(value)}
-                className="px-3 py-1.5 rounded-full text-xs font-bold transition-all dashboard-chip"
-                style={{
-                  background: filter === value ? 'rgba(0,194,255,0.14)' : 'rgba(15,23,42,0.72)',
-                  color: filter === value ? '#E0F2FE' : '#94A3B8',
-                  border: `1px solid ${filter === value ? 'rgba(0,194,255,0.28)' : 'rgba(148,163,184,0.12)'}`,
-                }}
-              >
-                {label}
-                {value === 'all' && <span className="ml-1.5 opacity-70">{routes.length}</span>}
-              </button>
-            ))}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { value: 'all',   label: 'All' },
+                { value: 'sea',   label: 'Maritime' },
+                { value: 'air',   label: 'Air' },
+                { value: 'truck', label: 'Road' },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setFilter(value)}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold transition-all dashboard-chip"
+                  style={{
+                    background: filter === value ? 'rgba(0,194,255,0.14)' : 'rgba(15,23,42,0.72)',
+                    color: filter === value ? '#E0F2FE' : '#94A3B8',
+                    border: `1px solid ${filter === value ? 'rgba(0,194,255,0.28)' : 'rgba(148,163,184,0.12)'}`,
+                  }}
+                >
+                  {label}
+                  {value === 'all' && <span className="ml-1.5 opacity-70">{routes.length}</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400">Sort by:</span>
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-slate-900 border border-slate-800 text-xs font-bold rounded-xl pl-3 pr-8 py-1.5 text-slate-300 focus:outline-none focus:border-[#00C2FF] focus:ring-1 focus:ring-[#00C2FF]/20 transition-all cursor-pointer appearance-none"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 8px center',
+                    backgroundSize: '14px',
+                  }}
+                >
+                  <option value="date">Date Added</option>
+                  <option value="distance">Distance</option>
+                  <option value="risk">Risk Score</option>
+                  <option value="safety">Safety Score</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-6">
-        {filtered.length === 0 ? (
+        {sortedAndFiltered.length === 0 ? (
           /* Empty state */
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -324,7 +368,7 @@ const ShipmentsPage = () => {
           /* Shipment list */
           <div className="space-y-2.5">
             <AnimatePresence>
-              {filtered.map((r, idx) => {
+              {sortedAndFiltered.map((r, idx) => {
                 const ModeIcon   = MODE_ICONS[r.mode]   || Anchor;
                 const modeColor  = MODE_COLORS[r.mode]  || '#3B82F6';
                 const modeLabel  = MODE_LABELS[r.mode]  || r.mode;

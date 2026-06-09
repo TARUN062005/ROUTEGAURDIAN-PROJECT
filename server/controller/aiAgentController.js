@@ -42,8 +42,79 @@ const runGemini = async (prompt, isJson = false) => {
     return { success: false, text: '' };
 };
 
+function isValidLocation(q) {
+    if (!q) return false;
+    const words = q.toLowerCase().replace(/[\(\)\[\]\+\*,-\.\/]/g, ' ').split(/\s+/).filter(Boolean);
+    if (words.length === 0) return false;
+    
+    const INVALID_LOCATION_KEYWORDS = new Set([
+        'sea', 'ship', 'road', 'air', 'flight', 'airplane', 'maritime',
+        'transport', 'cargo', 'rail', 'train', 'ground', 'land', 'truck'
+    ]);
+    
+    const allInvalid = words.every(word => INVALID_LOCATION_KEYWORDS.has(word));
+    return !allInvalid;
+}
+
+function parseSimpleInput(message) {
+    if (!message) return null;
+    const msg = message.trim();
+    
+    const routeMatch = msg.match(/^(.+?)\s+(?:to|till|→|->)\s+(.+)$/i);
+    if (routeMatch) {
+        const origin = routeMatch[1].trim();
+        const destAndMode = routeMatch[2].trim();
+        
+        const byMatch = destAndMode.match(/^(.+?)\s+(?:by|via|using|through)?\s*(sea|ship|maritime|air|flight|plane|rail|train|truck|road|ground|land)$/i);
+        if (byMatch) {
+            return {
+                origin,
+                destination: byMatch[1].trim(),
+                mode: byMatch[2].toLowerCase()
+            };
+        }
+        return {
+            origin,
+            destination: destAndMode,
+            mode: null
+        };
+    }
+    
+    const words = msg.split(/[\s,]+/);
+    if (words.length >= 2) {
+        const modeKeywords = {
+            sea: 'sea', ship: 'sea', maritime: 'sea', ocean: 'sea',
+            air: 'air', flight: 'air', plane: 'air',
+            rail: 'rail', train: 'rail',
+            truck: 'road', road: 'road', ground: 'road', land: 'road'
+        };
+        
+        let detectedMode = null;
+        const cleanWords = [];
+        
+        for (const w of words) {
+            const lowerW = w.toLowerCase();
+            if (modeKeywords[lowerW]) {
+                detectedMode = modeKeywords[lowerW];
+            } else if (lowerW !== 'by' && lowerW !== 'via' && lowerW !== 'cargo' && lowerW !== 'freight') {
+                cleanWords.push(w);
+            }
+        }
+        
+        if (cleanWords.length >= 2) {
+            return {
+                origin: cleanWords[0],
+                destination: cleanWords[1],
+                mode: detectedMode
+            };
+        }
+    }
+    
+    return null;
+}
+
 const geocode = async (query, PORT) => {
-    if (!query) return null;
+    if (!query || !isValidLocation(query)) return null;
     try {
         const res = await axios.get(
             `http://localhost:${PORT}/api/ai/search?q=${encodeURIComponent(query)}&limit=1`,
@@ -401,26 +472,54 @@ Generate a JSON object matching this schema (do not include markdown syntax or e
             }
 
             // 5. Save to Prisma database
-            const shipment = await prisma.shipment.create({
-                data: {
-                    origin: startGeo.display_name,
-                    destination: endGeo.display_name,
-                    mode: mode === 'ship' ? 'sea' : mode === 'truck' ? 'road' : mode,
-                    distance: parseFloat(route.distance) || 0,
-                    eta: parseFloat(route.duration) || 0,
-                    riskScore: riskScore != null ? parseFloat(riskScore) : null,
-                    safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
-                    routeGeometry: route.geometry,
-                    cargo,
-                    priority,
-                    date,
-                    time: '12:00',
-                    weatherSummary: weatherImpact,
-                    riskSummary: geoRiskResult?.recommended_mode || 'low-risk',
-                    aiReport: JSON.stringify(aiReport),
-                    status: 'active'
+            const crypto = require('crypto');
+            let routeHash = null;
+            if (route.geometry) {
+                const coords = route.geometry.coordinates || route.geometry;
+                if (Array.isArray(coords)) {
+                    const cleanCoords = coords.map(p => [
+                        parseFloat(p[0]).toFixed(5),
+                        parseFloat(p[1]).toFixed(5)
+                    ]);
+                    const serialized = JSON.stringify(cleanCoords);
+                    routeHash = crypto.createHash('sha256').update(serialized).digest('hex');
                 }
-            });
+            }
+
+            let shipment;
+            if (routeHash) {
+                const existing = await prisma.shipment.findFirst({
+                    where: { routeHash }
+                });
+                if (existing) {
+                    console.log(`[agentChat] Found duplicate shipment with routeHash: ${routeHash}. Bypassing creation.`);
+                    shipment = existing;
+                }
+            }
+
+            if (!shipment) {
+                shipment = await prisma.shipment.create({
+                    data: {
+                        origin: startGeo.display_name,
+                        destination: endGeo.display_name,
+                        mode: mode === 'ship' ? 'sea' : mode === 'truck' ? 'road' : mode,
+                        distance: parseFloat(route.distance) || 0,
+                        eta: parseFloat(route.duration) || 0,
+                        riskScore: riskScore != null ? parseFloat(riskScore) : null,
+                        safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
+                        routeGeometry: route.geometry,
+                        routeHash,
+                        cargo,
+                        priority,
+                        date,
+                        time: '12:00',
+                        weatherSummary: weatherImpact,
+                        riskSummary: geoRiskResult?.recommended_mode || 'low-risk',
+                        aiReport: JSON.stringify(aiReport),
+                        status: 'active'
+                    }
+                });
+            }
 
             const updatedState = {
                 ...currentState,
@@ -592,7 +691,29 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
 
     // Fallback parser (runs when Gemini is unavailable or returns invalid JSON)
     if (!parsed) {
-        const msg = message.toLowerCase().trim();
+        const simple = parseSimpleInput(message);
+        if (simple && simple.origin && simple.destination) {
+            const MODE_MAP = { sea: 'sea', ship: 'sea', maritime: 'sea', air: 'air', flight: 'air', road: 'road', truck: 'road' };
+            const finalMode = simple.mode ? (MODE_MAP[simple.mode.toLowerCase()] || simple.mode.toLowerCase()) : null;
+            parsed = {
+                type: 'ASK',
+                message: finalMode
+                    ? `Got it — ${simple.origin} to ${simple.destination} by ${finalMode}. What date would you like to ship? (e.g. June 15, next Monday, or ASAP)`
+                    : `Got it — ${simple.origin} to ${simple.destination}. Which transport mode? Sea, Air, or Road?`,
+                extracted: {
+                    origin: simple.origin,
+                    destination: simple.destination,
+                    mode: finalMode,
+                    date: null,
+                    time: null,
+                    cargo: null,
+                    priority: null
+                },
+                clarifyField: null,
+                options: []
+            };
+        } else {
+            const msg = message.toLowerCase().trim();
 
         // Check if we should skip extracting fields from this message (e.g. if it's a control or confirmation keyword)
         let skipExtraction = false;
@@ -855,6 +976,7 @@ REQUIRED JSON RESPONSE (no markdown, no extra text):
             }
         }
     }
+}
 
     const extracted = parsed.extracted || {};
 

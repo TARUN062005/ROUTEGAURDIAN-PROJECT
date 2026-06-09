@@ -6,6 +6,7 @@ const { verifyToken } = require('../middleware/authmiddleware');
 
 router.use(verifyToken);
 
+router.post('/warmup', aiRouteController.warmup);
 router.post('/route/optimize', aiRouteController.optimizeRoute);
 router.post('/intent', aiAgentController.processAIIntent);
 router.post('/agent/chat', aiAgentController.agentChat);

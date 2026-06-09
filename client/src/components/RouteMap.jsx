@@ -21,10 +21,12 @@ const tileUrls = {
 const isValidCoord = c => Array.isArray(c) && c.length === 2 && !isNaN(c[0]) && !isNaN(c[1]);
 
 // ── Port / Anchor marker ─────────────────────────────────────────
-const makePortIcon = (type) =>
-  L.divIcon({
-    html: `<div style="position:relative;width:38px;height:38px;">
-      <div style="width:38px;height:38px;border-radius:50%;
+const makePortIcon = (type) => {
+  const markerColor = type === 'origin' ? '#34a853' : '#ea4335';
+  return L.divIcon({
+    html: `<div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;width:38px;height:38px;border-radius:50%;background:${markerColor};opacity:0.4;animation:radar-pulse 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+      <div style="position:relative;width:38px;height:38px;border-radius:50%;
         background:${type === 'origin' ? '#1a73e8' : '#ea4335'};
         border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,0.25);
         display:flex;align-items:center;justify-content:center;">
@@ -39,11 +41,13 @@ const makePortIcon = (type) =>
     </div>`,
     className: '', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -22],
   });
+};
 
 const makePinIcon = (label, bg, shadowColor) =>
   L.divIcon({
     html: `<div style="position:relative;width:32px;height:42px;display:flex;flex-direction:column;align-items:center;">
-      <div style="width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+      <div style="position:absolute;top:0;width:32px;height:32px;border-radius:50%;background:${bg};opacity:0.4;animation:radar-pulse 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+      <div style="position:relative;width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
         background:${bg};border:2.5px solid white;box-shadow:0 4px 14px ${shadowColor};
         display:flex;align-items:center;justify-content:center;">
         <span style="transform:rotate(45deg);color:white;font-size:12px;font-weight:900;font-family:system-ui;">${label}</span>
@@ -52,6 +56,21 @@ const makePinIcon = (label, bg, shadowColor) =>
     </div>`,
     className: '', iconSize: [32, 42], iconAnchor: [16, 42], popupAnchor: [0, -44],
   });
+
+const makeWarningIcon = (severity) => {
+  const color = severity === 'CRITICAL' ? '#EF4444' : severity === 'HIGH' ? '#F59E0B' : '#EAB308';
+  return L.divIcon({
+    html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+      background:${color}22;border:1.5px solid ${color};border-radius:50%;box-shadow:0 0 10px ${color}33;">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </div>`,
+    className: '', iconSize: [24, 24], iconAnchor: [12, 12]
+  });
+};
 
 const portOriginIcon = makePortIcon('origin');
 const portDestIcon   = makePortIcon('dest');
@@ -150,11 +169,40 @@ const ClusteredIncidentMarkers = ({ events }) => {
             <Marker key={`event-${ci}`} position={[cluster.lat, cluster.lon]} icon={pinIcon}>
               <Popup>
                 <div className="p-2.5 max-w-xs text-xs" style={{ background: '#0F172A', color: '#F8FAFC', borderRadius: '12px' }}>
-                  {event.image_url && (
-                    <a href={event.source_url || '#'} target={event.source_url ? "_blank" : undefined} rel="noreferrer" className={event.source_url ? "block mb-2" : "block mb-2 pointer-events-none"}>
-                      <img src={event.image_url} alt={event.headline} loading="lazy" className="w-full h-24 object-cover rounded-lg hover:opacity-90 transition-opacity" />
-                    </a>
-                  )}
+                  {(() => {
+                    if (event.image_url) {
+                      return (
+                        <a href={event.source_url || '#'} target={event.source_url ? "_blank" : undefined} rel="noreferrer" className={event.source_url ? "block mb-2" : "block mb-2 pointer-events-none"}>
+                          <img src={event.image_url} alt={event.headline} loading="lazy" className="w-full h-24 object-cover rounded-lg hover:opacity-90 transition-opacity" />
+                        </a>
+                      );
+                    }
+                    const getDomain = (url) => {
+                      if (!url) return '';
+                      try { return new URL(url).hostname; } catch { return ''; }
+                    };
+                    const domain = getDomain(event.source_url);
+                    const favicon = domain ? `https://www.google.com/s2/favicons?sz=64&domain=${domain}` : null;
+                    const colors = {
+                      CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
+                      HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
+                      MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
+                    };
+                    const theme = colors[severity] || colors.MODERATE;
+                    return (
+                      <a href={event.source_url || '#'} target={event.source_url ? "_blank" : undefined} rel="noreferrer" className={event.source_url ? "block mb-2 border rounded-lg overflow-hidden" : "block mb-2 border rounded-lg overflow-hidden pointer-events-none"} style={{ borderColor: theme.border }}>
+                        <div className="w-full h-20 flex flex-col items-center justify-center gap-1 p-2"
+                          style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                          {favicon ? (
+                            <img src={favicon} alt={event.publisher || domain} className="w-7 h-7 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                          ) : (
+                            <Radio size={12} style={{ color: theme.text }} className="opacity-60 animate-pulse" />
+                          )}
+                          {event.publisher && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{event.publisher}</span>}
+                        </div>
+                      </a>
+                    );
+                  })()}
                   <p className="font-black text-sm mb-1 leading-snug" style={{ color: severityColor }}>{event.headline}</p>
                   <p className="text-[9px] uppercase font-extrabold tracking-wider opacity-85 mb-1.5" style={{ color: severityColor }}>
                     {event.label || 'threat'} · {event.confidence != null ? `${(event.confidence * 100).toFixed(0)}% confidence` : ''}
@@ -263,10 +311,12 @@ const NavigationSimulator = ({ coords, isActive, isNavigating, speedMultiplier, 
   return <Marker position={position} icon={navIcon} zIndexOffset={6000} />;
 };
 
-const makeAirportMarkerIcon = (type) =>
-  L.divIcon({
-    html: `<div style="position:relative;width:38px;height:38px;">
-      <div style="width:38px;height:38px;border-radius:50%;
+const makeAirportMarkerIcon = (type) => {
+  const markerColor = type === 'origin' ? '#34a853' : '#ea4335';
+  return L.divIcon({
+    html: `<div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;width:38px;height:38px;border-radius:50%;background:${markerColor};opacity:0.4;animation:radar-pulse 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+      <div style="position:relative;width:38px;height:38px;border-radius:50%;
         background:${type === 'origin' ? '#1a73e8' : '#ea4335'};
         border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,0.25);
         display:flex;align-items:center;justify-content:center;">
@@ -279,6 +329,7 @@ const makeAirportMarkerIcon = (type) =>
     </div>`,
     className: '', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -22],
   });
+};
 
 const AnimatedPolyline = ({ positions, children, ...props }) => {
   const [visibleCoords, setVisibleCoords] = useState([]);
@@ -590,12 +641,14 @@ export const RouteMap = ({
             const updatedRoute = { ...replayedRoute, intelligence: intelRes.data.intelligence };
             setAllRoutes([updatedRoute]);
             onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
+            setShowRiskPanel(true);
           }
         } catch (intelErr) {
           console.error('[RouteMap] Replay intel error:', intelErr.message);
           const updatedRoute = { ...replayedRoute, intelligence: { error: true, summary: 'Risk intelligence temporarily unavailable.' } };
           setAllRoutes([updatedRoute]);
           onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
+          setShowRiskPanel(true);
         }
       };
 
@@ -680,12 +733,34 @@ export const RouteMap = ({
 
         return (
           <React.Fragment key={route.id}>
-            {/* White outline */}
+            {/* Glow line 1 - Wide soft outer glow */}
+            {activeLayers.route && (
+              <AnimatedPolyline
+                positions={route.coords}
+                color={color}
+                weight={isActive ? weight + 10 : (isHov ? weight + 8 : weight + 6)}
+                opacity={isActive ? 0.15 : (isHov ? 0.08 : 0.04)}
+                lineCap="round"
+                lineJoin="round"
+              />
+            )}
+            {/* Glow line 2 - Medium inner glow */}
+            {activeLayers.route && (
+              <AnimatedPolyline
+                positions={route.coords}
+                color={color}
+                weight={isActive ? weight + 4 : (isHov ? weight + 3 : weight + 2)}
+                opacity={isActive ? 0.35 : (isHov ? 0.18 : 0.08)}
+                lineCap="round"
+                lineJoin="round"
+              />
+            )}
+            {/* Outline core */}
             {activeLayers.route && (
               <AnimatedPolyline
                 positions={route.coords}
                 color="white"
-                weight={isActive ? modeStyle.weight + 2 : modeStyle.altWeight + 3}
+                weight={isActive ? weight + 1 : (isHov ? weight + 1 : weight + 1)}
                 opacity={isActive ? 0.85 : 0.35}
                 lineCap="round"
                 lineJoin="round"
@@ -696,8 +771,8 @@ export const RouteMap = ({
               <AnimatedPolyline
                 positions={route.coords}
                 color={color}
-                weight={weight}
-                opacity={opacity}
+                weight={isActive ? weight - 1 : (isHov ? weight - 1 : weight - 1)}
+                opacity={isActive ? 1.0 : 0.7}
                 lineCap="round"
                 lineJoin="round"
                 dashArray={dash}
@@ -788,6 +863,18 @@ export const RouteMap = ({
 
   return (
     <div className="w-full h-full relative overflow-hidden dashboard-shell">
+      <style>{`
+        @keyframes radar-pulse {
+          0% {
+            transform: scale(0.6);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(2.4);
+            opacity: 0;
+          }
+        }
+      `}</style>
 
       {/* Loading bar */}
       <AnimatePresence>
@@ -1028,34 +1115,54 @@ export const RouteMap = ({
             : zone.severity === 'HIGH' ? '#ea580c'
             : '#d97706';
           return (
-            <Circle
-              key={zone.id}
-              center={[zone.lat, zone.lon]}
-              radius={zone.radiusKm * 1000}
-              pathOptions={{
-                color: zoneColor,
-                fillColor: zoneColor,
-                fillOpacity: 0.07,
-                weight: 1.5,
-                opacity: 0.5,
-                dashArray: '6 5',
-              }}
-            >
-              <Popup>
-                <div className="p-1" style={{ minWidth: 180, maxWidth: 220 }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span style={{ fontSize: 13 }}>
-                      {zone.type === 'conflict' ? '⚔️' : zone.type === 'piracy' ? '🏴‍☠️' : '🚩'}
-                    </span>
-                    <p className="font-black text-slate-800 text-xs">{zone.name}</p>
+            <React.Fragment key={zone.id}>
+              <Circle
+                center={[zone.lat, zone.lon]}
+                radius={zone.radiusKm * 1000}
+                pathOptions={{
+                  color: zoneColor,
+                  fillColor: zoneColor,
+                  fillOpacity: 0.07,
+                  weight: 1.5,
+                  opacity: 0.5,
+                  dashArray: '6 5',
+                }}
+              >
+                <Popup>
+                  <div className="p-1" style={{ minWidth: 180, maxWidth: 220 }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span style={{ fontSize: 13 }}>
+                        {zone.type === 'conflict' ? '⚔️' : zone.type === 'piracy' ? '🏴' : '🚩'}
+                      </span>
+                      <p className="font-black text-slate-800 text-xs">{zone.name}</p>
+                    </div>
+                    <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: zoneColor }} className="mb-1">
+                      {zone.severity} · {zone.type}
+                    </p>
+                    <p style={{ fontSize: 10, color: '#475569', lineHeight: 1.4 }}>{zone.reason}</p>
                   </div>
-                  <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: zoneColor }} className="mb-1">
-                    {zone.severity} · {zone.type}
-                  </p>
-                  <p style={{ fontSize: 10, color: '#475569', lineHeight: 1.4 }}>{zone.reason}</p>
-                </div>
-              </Popup>
-            </Circle>
+                </Popup>
+              </Circle>
+              <Marker
+                position={[zone.lat, zone.lon]}
+                icon={makeWarningIcon(zone.severity)}
+              >
+                <Popup>
+                  <div className="p-1" style={{ minWidth: 180, maxWidth: 220 }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span style={{ fontSize: 13 }}>
+                        {zone.type === 'conflict' ? '⚔️' : zone.type === 'piracy' ? '🏴' : '🚩'}
+                      </span>
+                      <p className="font-black text-slate-800 text-xs">{zone.name}</p>
+                    </div>
+                    <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: zoneColor }} className="mb-1">
+                      {zone.severity} · {zone.type}
+                    </p>
+                    <p style={{ fontSize: 10, color: '#475569', lineHeight: 1.4 }}>{zone.reason}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            </React.Fragment>
           );
         })}
 

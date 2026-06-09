@@ -493,6 +493,7 @@ model Shipment {
   riskScore      Float?
   safetyScore    Float?
   routeGeometry  Json
+  routeHash      String?
   cargo          String?
   priority       String?
   date           String?
@@ -502,5 +503,7 @@ model Shipment {
   aiReport       String?
   status         String   @default("active")
   createdAt      DateTime @default(now())
+
+  @@index([routeHash])
 }
 

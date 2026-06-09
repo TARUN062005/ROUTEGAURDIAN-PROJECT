@@ -345,7 +345,7 @@ const Dashboard = () => {
 
   // Automatically save new successful routes
   useEffect(() => {
-    if (selectedSource && selectedDest && activeRoute && intel && intel.riskScore != null && !intel.loading && !intel.error && !replayingShipment && !originalAnalysis) {
+    if (selectedSource && selectedDest && activeRoute && intel && !intel.loading && !replayingShipment && !originalAnalysis) {
       const key = `${selectedSource.lat}-${selectedSource.lon || selectedSource.lng}-${selectedDest.lat}-${selectedDest.lon || selectedDest.lng}-${freightMode}`;
       if (savedShipmentKeyRef.current !== key) {
         savedShipmentKeyRef.current = key;
@@ -1041,11 +1041,35 @@ const Dashboard = () => {
                                 }));
                               }}
                             >
-                              {news.image_url && (
-                                <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-1.5">
-                                  <img src={news.image_url} alt={news.headline} loading="lazy" className="w-full h-24 object-cover hover:scale-105 transition-transform duration-300" />
-                                </a>
-                              )}
+                              {(() => {
+                                if (news.image_url) {
+                                  return (
+                                    <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-1.5">
+                                      <img src={news.image_url} alt={news.headline} loading="lazy" className="w-full h-24 object-cover hover:scale-105 transition-transform duration-300" />
+                                    </a>
+                                  );
+                                }
+                                const colors = {
+                                  CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
+                                  HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
+                                  MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
+                                };
+                                const theme = colors[severity] || colors.MODERATE;
+                                const fav = getFavicon(news.source_url);
+                                return (
+                                  <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-1.5 border" style={{ borderColor: theme.border }}>
+                                    <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 p-2"
+                                      style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                                      {fav ? (
+                                        <img src={fav} alt={news.publisher} className="w-7 h-7 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                                      ) : (
+                                        <AlertTriangle size={14} style={{ color: theme.text }} />
+                                      )}
+                                      {news.publisher && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{news.publisher}</span>}
+                                    </div>
+                                  </a>
+                                );
+                              })()}
                               <div className="flex justify-between items-start gap-2">
                                 <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide flex-shrink-0"
                                   style={{ background: style.card, color: style.dot, borderColor: style.border, border: '1px solid' }}>
@@ -1096,20 +1120,34 @@ const Dashboard = () => {
                               }));
                             }}
                           >
-                            {news.image_url ? (
-                              <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className={news.source_url ? "block overflow-hidden rounded-lg" : "block overflow-hidden rounded-lg pointer-events-none"}>
-                                <img src={news.image_url} alt={news.headline} loading="lazy" className="w-full h-32 object-cover hover:scale-105 transition-transform duration-300" />
-                              </a>
-                            ) : (
-                              <div className="w-full h-20 bg-slate-800/40 rounded-lg flex flex-col items-center justify-center text-slate-500 gap-1.5 border border-slate-800/50">
-                                {fav ? (
-                                  <img src={fav} alt={news.publisher} className="w-7 h-7 rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
-                                ) : (
-                                  <Radio size={14} className="opacity-40 animate-pulse" />
-                                )}
-                                <span className="text-[8px] uppercase font-black tracking-wider opacity-60">Favicon Preview</span>
-                              </div>
-                            )}
+                            {(() => {
+                              if (news.image_url) {
+                                return (
+                                  <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className={news.source_url ? "block overflow-hidden rounded-lg" : "block overflow-hidden rounded-lg pointer-events-none"}>
+                                    <img src={news.image_url} alt={news.headline} loading="lazy" className="w-full h-32 object-cover hover:scale-105 transition-transform duration-300" />
+                                  </a>
+                                );
+                              }
+                              const colors = {
+                                CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
+                                HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
+                                MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
+                              };
+                              const theme = colors[severity] || colors.MODERATE;
+                              return (
+                                <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-1 border" style={{ borderColor: theme.border }}>
+                                  <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 p-2"
+                                    style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                                    {fav ? (
+                                      <img src={fav} alt={news.publisher} className="w-8 h-8 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                                    ) : (
+                                      <Radio size={14} style={{ color: theme.text }} className="opacity-60 animate-pulse" />
+                                    )}
+                                    {news.publisher && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{news.publisher}</span>}
+                                  </div>
+                                </a>
+                              );
+                            })()}
                             <div className="flex justify-between items-center gap-2">
                               <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"
                                 style={{ background: style.card, color: style.dot, borderColor: style.border, border: '1px solid' }}>
@@ -1244,16 +1282,35 @@ const Dashboard = () => {
                         className="p-3 rounded-xl border flex flex-col gap-2 cursor-pointer transition-all hover:border-slate-700"
                         style={{ background: 'rgba(15,23,42,0.9)', borderColor: SURFACE_BORDER }}
                       >
-                        {news.image_url ? (
-                          <div className="w-full h-24 overflow-hidden rounded-lg">
-                            <img src={news.image_url} alt={news.title} className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-full h-16 bg-slate-800/40 rounded-lg flex flex-col items-center justify-center text-slate-500 gap-1 border border-slate-800/50">
-                            <Radio size={14} className="opacity-40" />
-                            <span className="text-[8px] uppercase font-black tracking-wider opacity-60">No Media</span>
-                          </div>
-                        )}
+                        {(() => {
+                          if (news.image_url) {
+                            return (
+                              <div className="w-full h-24 overflow-hidden rounded-lg">
+                                <img src={news.image_url} alt={news.title} className="w-full h-full object-cover" />
+                              </div>
+                            );
+                          }
+                          const fav = getFavicon(news.source_url || news.link);
+                          const colors = {
+                            CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
+                            HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
+                            MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
+                          };
+                          const theme = colors[severity] || colors.MODERATE;
+                          return (
+                            <div className="w-full h-20 overflow-hidden rounded-lg border" style={{ borderColor: theme.border }}>
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2"
+                                style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
+                                {fav ? (
+                                  <img src={fav} alt={news.source} className="w-7 h-7 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
+                                ) : (
+                                  <Radio size={12} style={{ color: theme.text }} className="opacity-60 animate-pulse" />
+                                )}
+                                {news.source && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{news.source}</span>}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <div>
                           <div className="flex justify-between items-center gap-2 mb-1">
                             <span className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"

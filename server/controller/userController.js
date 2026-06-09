@@ -30,6 +30,20 @@ class UserController {
   }
 
   /**
+   * POST /api/user/active-ping
+   */
+  async activePing(req, res) {
+    try {
+      const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+      GeoRiskWarmupService.userPing(req.user.id);
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('activePing error:', error);
+      return res.status(500).json({ success: false });
+    }
+  }
+
+  /**
    * PATCH /api/user/settings
    * Supports:
    * - multipart/form-data with profileImage
