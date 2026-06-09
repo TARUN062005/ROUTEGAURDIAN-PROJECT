@@ -118,9 +118,32 @@ class UserController {
     try {
       const { type } = req.query;
 
+      // Clear cookies helper logic
+      const clearCookies = () => {
+        res.clearCookie('access_token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('refresh_token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('XSRF-TOKEN', {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+        });
+      };
+
       if (type === 'permanent') {
         await userService.deleteAllUserSessions(req.user.id);
         await userService.delete(req.user.id);
+        clearCookies();
 
         return res.status(200).json({
           success: true,
@@ -131,6 +154,7 @@ class UserController {
       // Suspend
       await userService.update(req.user.id, { isActive: false });
       await userService.deleteAllUserSessions(req.user.id);
+      clearCookies();
 
       await ActivityService.log(
         req.user.id,

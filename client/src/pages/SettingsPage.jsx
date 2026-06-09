@@ -48,6 +48,10 @@ const SettingsPage = () => {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Suspend account confirmation modal state
+  const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
+  const [suspendLoading, setSuspendLoading] = useState(false);
+
   // Sync state if user changes
   useEffect(() => {
     if (user) {
@@ -144,14 +148,23 @@ const SettingsPage = () => {
       setDeleteConfirmInput('');
       return;
     }
-    const msg = 'This will suspend your account. Disables your credentials temporarily. Your data remains stored but logins will block until reactivation.';
-    if (!window.confirm(msg)) return;
+    if (type === 'suspend') {
+      setIsSuspendModalOpen(true);
+      return;
+    }
+  };
+
+  const handleConfirmSuspendAccount = async () => {
+    setSuspendLoading(true);
     try {
-      await axios.delete(`${BASE_URL}/api/user/account?type=${type}`, { withCredentials: true });
+      await axios.delete(`${BASE_URL}/api/user/account?type=suspend`, { withCredentials: true });
       toast.success('Account suspended successfully.');
+      setIsSuspendModalOpen(false);
       logout();
     } catch {
-      toast.error('Action failed. Please try again.');
+      toast.error('Failed to suspend account. Please try again.');
+    } finally {
+      setSuspendLoading(false);
     }
   };
 
@@ -811,6 +824,46 @@ const SettingsPage = () => {
                           className="px-5 py-2 bg-[#FF5C7A] hover:bg-[#ff7a93] disabled:opacity-35 text-[#081120] font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md shadow-red-500/10"
                         >
                           {deleteLoading ? 'Deleting...' : 'Confirm Destruction'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isSuspendModalOpen && (
+                  <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div 
+                      className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+                      onClick={() => setIsSuspendModalOpen(false)}
+                    />
+                    {/* Modal container */}
+                    <div className="relative w-full max-w-md p-6 rounded-[24px] bg-[#0E1624] border border-amber-500/20 shadow-2xl text-white z-10 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                          <Shield size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold">Suspend Account Profile</h3>
+                          <p className="text-xs text-[#9AA7B5] mt-0.5">Temporary account deactivation.</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-[#9AA7B5] leading-relaxed">
+                        This operation will temporarily suspend your account and sign you out of all devices. Your saved routes, shipments, and settings will be preserved, but you will not be able to log back in until your node is reactivated.
+                      </p>
+                      <div className="flex items-center justify-end gap-2.5 pt-2">
+                        <button
+                          onClick={() => setIsSuspendModalOpen(false)}
+                          className="px-4 py-2 bg-transparent border border-white/5 rounded-xl text-xs font-bold text-white hover:border-white/10 transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleConfirmSuspendAccount}
+                          disabled={suspendLoading}
+                          className="px-5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-35 text-[#081120] font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md shadow-amber-500/10"
+                        >
+                          {suspendLoading ? 'Suspending...' : 'Confirm Suspension'}
                         </button>
                       </div>
                     </div>

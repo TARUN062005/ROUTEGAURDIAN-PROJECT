@@ -441,6 +441,14 @@ class AuthController {
         return res.status(401).json({ success: false, message: 'Invalid credentials' });
       }
 
+      if (user.isActive === false) {
+        return res.status(403).json({
+          success: false,
+          message: 'This account is suspended. Please request reactivation.',
+          code: 'ACCOUNT_SUSPENDED'
+        });
+      }
+
       // Check lock status
       if (user.lockUntil && user.lockUntil > new Date()) {
         const remaining = Math.round((user.lockUntil - new Date()) / 1000 / 60);

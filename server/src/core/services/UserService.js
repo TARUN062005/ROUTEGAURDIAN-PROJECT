@@ -89,6 +89,12 @@ class UserService {
       user = await this.findByEmail(incomingEmail);
     }
 
+    if (user && user.isActive === false) {
+      const err = new Error('This account is suspended. Please request reactivation.');
+      err.statusCode = 403;
+      throw err;
+    }
+
     // -----------------------
     // CASE A: New user
     // -----------------------
