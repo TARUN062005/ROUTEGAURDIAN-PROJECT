@@ -5,6 +5,10 @@
  */
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
+const PortResolver = require('../services/PortResolver');
+const AirportResolver = require('../services/AirportResolver');
+const portResolver = new PortResolver();
+const airportResolver = new AirportResolver();
 
 if (!process.env.GEMINI_API_KEY) {
     console.warn('[SECURITY] GEMINI_API_KEY not set — Routy AI features will be degraded');
@@ -51,8 +55,7 @@ function isValidLocation(q) {
     const INVALID_LOCATION_KEYWORDS = new Set([
         'sea', 'ship', 'road', 'air', 'flight', 'airplane', 'maritime',
         'transport', 'cargo', 'rail', 'train', 'ground', 'land', 'truck',
-        'express', 'standard', 'economy', 'port', 'airport', 'standard',
-        'way', 'route'
+        'express', 'standard', 'economy', 'port', 'airport', 'way', 'route'
     ]);
     
     const allInvalid = words.every(word => INVALID_LOCATION_KEYWORDS.has(word));
@@ -94,8 +97,14 @@ function deterministicParse(message, state = {}) {
         let origCandidate = routeMatch[1].trim();
         let destCandidate = routeMatch[2].trim();
 
-        // Clean up leading/trailing helper words
-        origCandidate = origCandidate.replace(/^(ship|route|cargo|freight|from)\s+/i, '').trim();
+        let prevOrig;
+        do {
+            prevOrig = origCandidate;
+            origCandidate = origCandidate
+                .replace(/^(sea\s+route|air\s+route|road\s+route|maritime\s+route|sea\s+shipment|air\s+shipment|road\s+shipment|shipment|route|cargo|freight|from|transport|port\s+of|airport\s+of|near|at|in)\s+/gi, '')
+                .trim();
+        } while (origCandidate !== prevOrig);
+
         const byMatch = destCandidate.match(/^(.+?)\s+(?:by|via|using|through)?\s*(sea|ship|maritime|air|flight|plane|rail|train|truck|road|ground|land)$/i);
         if (byMatch) {
             destCandidate = byMatch[1].trim();
@@ -104,6 +113,14 @@ function deterministicParse(message, state = {}) {
                 mode = (rawM === 'ship' || rawM === 'maritime') ? 'sea' : (rawM === 'truck' || rawM === 'ground' || rawM === 'land') ? 'road' : rawM;
             }
         }
+
+        let prevDest;
+        do {
+            prevDest = destCandidate;
+            destCandidate = destCandidate
+                .replace(/^(port\s+of|airport\s+of|near|at|in|to)\s+/gi, '')
+                .trim();
+        } while (destCandidate !== prevDest);
         
         if (isValidLocation(origCandidate)) origin = origCandidate;
         if (isValidLocation(destCandidate)) destination = destCandidate;
@@ -170,7 +187,13 @@ const geocode = async (query, PORT) => {
         if (data) {
             const lat = parseFloat(data.lat || data.latitude);
             const lon = parseFloat(data.lon || data.longitude || data.lng);
-            if (!isNaN(lat) && !isNaN(lon)) return { lat, lon, display_name: data.display_name || query };
+            if (!isNaN(lat) && !isNaN(lon)) return {
+                lat,
+                lon,
+                display_name: data.display_name || query,
+                type: data.type || data.class || null,
+                address: data.address || {}
+            };
         }
     } catch {}
     try {
@@ -179,7 +202,13 @@ const geocode = async (query, PORT) => {
             { headers: { 'User-Agent': 'RouteGuardian/2.0' }, timeout: 6000 }
         );
         if (gr.data?.[0]) {
-            return { lat: parseFloat(gr.data[0].lat), lon: parseFloat(gr.data[0].lon), display_name: gr.data[0].display_name };
+            return {
+                lat: parseFloat(gr.data[0].lat),
+                lon: parseFloat(gr.data[0].lon),
+                display_name: gr.data[0].display_name,
+                type: gr.data[0].type || gr.data[0].class || null,
+                address: gr.data[0].address || {}
+            };
         }
     } catch {}
     return null;
@@ -554,47 +583,132 @@ Answer:`;
             });
         }
 
-        // Check resolves
-        if ((mode === 'ship' || mode === 'air') && !confirmedSource && !confirmedDest) {
-            const endpoint = mode === 'ship' ? 'resolve-port' : 'resolve-airport';
-            const optKey   = mode === 'ship' ? 'nearestPorts' : 'nearestAirports';
-            try {
-                const [originRes, destRes] = await Promise.all([
-                    axios.get(`http://localhost:${PORT}/api/ai/${endpoint}`, {
-                        params: { lat: startGeo.lat, lon: startGeo.lon, name: originQuery },
-                        timeout: 5000,
-                    }),
-                    axios.get(`http://localhost:${PORT}/api/ai/${endpoint}`, {
-                        params: { lat: endGeo.lat, lon: endGeo.lon, name: destQuery },
-                        timeout: 5000,
-                    }),
-                ]);
-                const originOptions = originRes.data[optKey] || [];
-                const destOptions   = destRes.data[optKey]   || [];
-                if (originOptions.length > 0 && destOptions.length > 0) {
-                    const noun = mode === 'ship' ? 'seaport' : 'airport';
-                    const updatedState = { ...currentState, confirmedSource: null, confirmedDest: null };
-                    await saveState(updatedState);
-                    return res.json({
-                        success: true,
-                        type: 'RESOLVE',
-                        message: `Please confirm the exact ${noun} nodes to construct the shipping vector.`,
-                        state: updatedState,
-                        mode: mode === 'ship' ? 'sea' : mode,
-                        originName:    originQuery,
-                        destName:      destQuery,
-                        originOptions,
-                        destOptions,
-                    });
+        // Helper: Haversine distance in km
+        const getHaversineKm = (lat1, lon1, lat2, lon2) => {
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+            return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        };
+
+        const directDistance = getHaversineKm(startGeo.lat, startGeo.lon, endGeo.lat, endGeo.lon);
+        const autoSnapThreshold = Math.min(500, Math.max(50, directDistance * 0.2));
+
+        // Resolve source Port/Airport
+        let sourceOptions = [];
+        let finalStart = confirmedSource;
+        if (!finalStart) {
+            if (mode === 'ship') {
+                await portResolver.ensureDataset();
+                if (startGeo.type === 'country') {
+                    const countryCode = (startGeo.address?.country_code || '').toUpperCase();
+                    sourceOptions = portResolver.ports.filter(p => p.countryCode === countryCode).slice(0, 10);
+                } else {
+                    const nearest = await portResolver.findNearest(startGeo.lat, startGeo.lon);
+                    if (nearest && nearest.port && nearest.distanceKm <= autoSnapThreshold) {
+                        finalStart = {
+                            lat: nearest.port.lat,
+                            lon: nearest.port.lon,
+                            display_name: `${nearest.port.name} Port, ${nearest.port.countryCode || ''}`
+                        };
+                    } else {
+                        const res = await portResolver.resolve({ lat: startGeo.lat, lon: startGeo.lon, name: originQuery });
+                        sourceOptions = res.matches && res.matches.length > 0 ? res.matches : (res.nearestPort ? [res.nearestPort] : []);
+                    }
                 }
-            } catch (err) {
-                console.warn('[AGENT] Resolver endpoints failed, using coordinates directly:', err.message);
+            } else if (mode === 'air') {
+                await airportResolver.ensureDataset();
+                if (startGeo.type === 'country') {
+                    const countryCode = (startGeo.address?.country_code || '').toUpperCase();
+                    sourceOptions = airportResolver.airports.filter(a => a.country === countryCode).slice(0, 10);
+                } else {
+                    const nearest = await airportResolver.findNearest(startGeo.lat, startGeo.lon);
+                    if (nearest && nearest.airport && nearest.distanceKm <= autoSnapThreshold) {
+                        const code = nearest.airport.iata || nearest.airport.icao || '';
+                        finalStart = {
+                            lat: nearest.airport.lat,
+                            lon: nearest.airport.lon,
+                            display_name: `${nearest.airport.name}${code ? ` (${code})` : ''}, ${nearest.airport.country || ''}`
+                        };
+                    } else {
+                        const res = await airportResolver.resolve({ lat: startGeo.lat, lon: startGeo.lon, name: originQuery });
+                        sourceOptions = res.matches && res.matches.length > 0 ? res.matches : (res.nearestAirport ? [res.nearestAirport] : []);
+                    }
+                }
+            } else {
+                finalStart = startGeo;
             }
         }
 
-        // Execute route planning
-        const finalStart = confirmedSource || startGeo;
-        const finalEnd = confirmedDest || endGeo;
+        // Resolve destination Port/Airport
+        let destOptions = [];
+        let finalEnd = confirmedDest;
+        if (!finalEnd) {
+            if (mode === 'ship') {
+                await portResolver.ensureDataset();
+                if (endGeo.type === 'country') {
+                    const countryCode = (endGeo.address?.country_code || '').toUpperCase();
+                    destOptions = portResolver.ports.filter(p => p.countryCode === countryCode).slice(0, 10);
+                } else {
+                    const nearest = await portResolver.findNearest(endGeo.lat, endGeo.lon);
+                    if (nearest && nearest.port && nearest.distanceKm <= autoSnapThreshold) {
+                        finalEnd = {
+                            lat: nearest.port.lat,
+                            lon: nearest.port.lon,
+                            display_name: `${nearest.port.name} Port, ${nearest.port.countryCode || ''}`
+                        };
+                    } else {
+                        const res = await portResolver.resolve({ lat: endGeo.lat, lon: endGeo.lon, name: destQuery });
+                        destOptions = res.matches && res.matches.length > 0 ? res.matches : (res.nearestPort ? [res.nearestPort] : []);
+                    }
+                }
+            } else if (mode === 'air') {
+                await airportResolver.ensureDataset();
+                if (endGeo.type === 'country') {
+                    const countryCode = (endGeo.address?.country_code || '').toUpperCase();
+                    destOptions = airportResolver.airports.filter(a => a.country === countryCode).slice(0, 10);
+                } else {
+                    const nearest = await airportResolver.findNearest(endGeo.lat, endGeo.lon);
+                    if (nearest && nearest.airport && nearest.distanceKm <= autoSnapThreshold) {
+                        const code = nearest.airport.iata || nearest.airport.icao || '';
+                        finalEnd = {
+                            lat: nearest.airport.lat,
+                            lon: nearest.airport.lon,
+                            display_name: `${nearest.airport.name}${code ? ` (${code})` : ''}, ${nearest.airport.country || ''}`
+                        };
+                    } else {
+                        const res = await airportResolver.resolve({ lat: endGeo.lat, lon: endGeo.lon, name: destQuery });
+                        destOptions = res.matches && res.matches.length > 0 ? res.matches : (res.nearestAirport ? [res.nearestAirport] : []);
+                    }
+                }
+            } else {
+                finalEnd = endGeo;
+            }
+        }
+
+        if (!finalStart || !finalEnd) {
+            const noun = mode === 'ship' ? 'seaport' : 'airport';
+            const updatedState = { ...currentState, confirmedSource: finalStart, confirmedDest: finalEnd };
+            await saveState(updatedState);
+
+            const mapToOption = (p) => ({
+                lat: p.lat,
+                lon: p.lon,
+                display_name: p.unlocode ? `${p.name} Port, ${p.countryCode || ''}` : `${p.name}${p.iata ? ` (${p.iata})` : ''}, ${p.country || ''}`
+            });
+
+            return res.json({
+                success: true,
+                type: 'RESOLVE',
+                message: `Please confirm the exact ${noun} nodes to construct the shipping vector.`,
+                state: updatedState,
+                mode: mode === 'ship' ? 'sea' : mode,
+                originName:    originQuery,
+                destName:      destQuery,
+                originOptions: sourceOptions.map(mapToOption),
+                destOptions:   destOptions.map(mapToOption),
+            });
+        }
 
         let routes = [];
         try {
@@ -747,10 +861,10 @@ Generate a JSON object matching this schema (do not include markdown syntax or e
         if (routeHash) {
             try {
                 const existing = await prisma.shipment.findFirst({
-                    where: { routeHash }
+                    where: { routeHash, userId }
                 });
                 if (existing) {
-                    console.log(`[agentChat] Duplicate shipment found: ${routeHash}. Bypassing creation.`);
+                    console.log(`[agentChat] Duplicate shipment found: ${routeHash} for user ${userId}. Bypassing creation.`);
                     shipment = existing;
                 }
             } catch (dbErr) {
@@ -762,6 +876,7 @@ Generate a JSON object matching this schema (do not include markdown syntax or e
             try {
                 shipment = await prisma.shipment.create({
                     data: {
+                        userId,
                         origin: finalStart.display_name,
                         destination: finalEnd.display_name,
                         mode: mode === 'ship' ? 'sea' : mode === 'truck' ? 'road' : mode,
@@ -778,6 +893,7 @@ Generate a JSON object matching this schema (do not include markdown syntax or e
                         weatherSummary: weatherImpact,
                         riskSummary: geoRiskResult?.recommended_mode || 'low-risk',
                         aiReport: JSON.stringify(aiReport),
+                        newsAlerts: geoRiskResult ? (geoRiskResult.modes?.[engineMode]?.events || null) : null,
                         status: 'active'
                     }
                 });

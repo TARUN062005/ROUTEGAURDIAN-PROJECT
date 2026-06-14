@@ -485,6 +485,7 @@ model AdminPermissionMapping {
 
 model Shipment {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @db.ObjectId
   origin         String
   destination    String
   mode           String
@@ -501,10 +502,12 @@ model Shipment {
   weatherSummary String?
   riskSummary    String?
   aiReport       String?
+  newsAlerts     Json?
   status         String   @default("active")
   createdAt      DateTime @default(now())
 
   @@index([routeHash])
+  @@index([userId])
 }
 
 model ChatState {

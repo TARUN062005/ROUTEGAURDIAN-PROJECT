@@ -370,7 +370,8 @@ const Dashboard = () => {
               time: '12:00',
               weatherSummary: intel.aiReport?.weatherImpact || 'LOW',
               riskSummary: intel.recommendedMode || 'low-risk',
-              aiReport: intel.aiReport
+              aiReport: intel.aiReport,
+              newsAlerts: intel.events || null
             });
             
             // Refresh saved routes list
@@ -406,6 +407,22 @@ const Dashboard = () => {
     }
   }, [selectedSource, selectedDest, freightMode, activeRoute, intel, replayingShipment, originalAnalysis]);
 
+  useEffect(() => {
+    if (replayingShipment) {
+      const coords = replayingShipment.routeGeometry?.coordinates || [];
+      if (coords.length >= 2) {
+        const origCoords = coords[0];
+        const destCoords = coords[coords.length - 1];
+        const sourceMatches = selectedSource && Math.abs(selectedSource.lat - origCoords[1]) < 0.001 && Math.abs((selectedSource.lon || selectedSource.lng) - origCoords[0]) < 0.001;
+        const destMatches = selectedDest && Math.abs(selectedDest.lat - destCoords[1]) < 0.001 && Math.abs((selectedDest.lon || selectedDest.lng) - destCoords[0]) < 0.001;
+        if (!sourceMatches || !destMatches) {
+          setReplayingShipment(null);
+          setOriginalAnalysis(null);
+        }
+      }
+    }
+  }, [selectedSource, selectedDest, replayingShipment]);
+
   const vehicleMode = freightMode;
 
   const handleRouteData = useCallback(async ({ allRoutes: routes, activeRouteIndex: idx }) => {
@@ -440,7 +457,8 @@ const Dashboard = () => {
     setActiveRouteIndex(0);
     setIsNavigating(false);
     setOriginalAnalysis(null);
-  }, []);
+    setReplayingShipment(null);
+  }, [setReplayingShipment]);
 
   const handleModeChange = useCallback((value) => {
     if (value === freightMode) return;
@@ -463,8 +481,9 @@ const Dashboard = () => {
     setIsMissionControlOpen(false);
     if (shipment) {
       setOriginalAnalysis(shipment);
+      setReplayingShipment(shipment);
     }
-  }, [freightMode, handleModeChange]);
+  }, [freightMode, handleModeChange, setReplayingShipment]);
 
   // Called when Routy saves a route
   const handleRoutySaved = useCallback(() => {
@@ -1128,34 +1147,18 @@ const Dashboard = () => {
                               }));
                             }}
                           >
-                            {(() => {
-                              if (news.image_url) {
-                                return (
-                                  <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className={news.source_url ? "block overflow-hidden rounded-lg" : "block overflow-hidden rounded-lg pointer-events-none"}>
-                                    <img src={news.image_url} alt={news.headline} loading="lazy" className="w-full h-32 object-cover hover:scale-105 transition-transform duration-300" />
-                                  </a>
-                                );
-                              }
-                              const colors = {
-                                CRITICAL: { from: '#7f1d1d', to: '#ef4444', border: 'rgba(239,68,68,0.25)', text: '#ef4444' },
-                                HIGH:     { from: '#7c2d12', to: '#f97316', border: 'rgba(249,115,22,0.25)', text: '#f97316' },
-                                MODERATE: { from: '#713f12', to: '#eab308', border: 'rgba(234,179,8,0.25)', text: '#eab308' },
-                              };
-                              const theme = colors[severity] || colors.MODERATE;
-                              return (
-                                <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className="block overflow-hidden rounded-lg mb-1 border" style={{ borderColor: theme.border }}>
-                                  <div className="w-full h-24 flex flex-col items-center justify-center gap-1.5 p-2"
-                                    style={{ background: `linear-gradient(135deg, ${theme.from}22, ${theme.to}08)` }}>
-                                    {fav ? (
-                                      <img src={fav} alt={news.publisher} className="w-8 h-8 rounded bg-[#0B1220] p-1 border border-white/10" onError={e => { e.target.style.display = 'none'; }} />
-                                    ) : (
-                                      <Radio size={14} style={{ color: theme.text }} className="opacity-60 animate-pulse" />
-                                    )}
-                                    {news.publisher && <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{news.publisher}</span>}
-                                  </div>
-                                </a>
-                              );
-                            })()}
+                            <a href={news.source_url || '#'} target={news.source_url ? "_blank" : undefined} rel="noreferrer" onClick={e => e.stopPropagation()} className={news.source_url ? "block overflow-hidden rounded-lg" : "block overflow-hidden rounded-lg pointer-events-none"}>
+                              <img
+                                src={news.image_url || '/logistics_fallback.png'}
+                                alt={news.headline}
+                                loading="lazy"
+                                className="w-full h-32 object-cover hover:scale-105 transition-transform duration-300"
+                                onError={(e) => {
+                                  e.currentTarget.onerror = null;
+                                  e.currentTarget.src = '/logistics_fallback.png';
+                                }}
+                              />
+                            </a>
                             <div className="flex justify-between items-center gap-2">
                               <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"
                                 style={{ background: style.card, color: style.dot, borderColor: style.border, border: '1px solid' }}>
@@ -1416,15 +1419,17 @@ const Dashboard = () => {
 
                 {/* Modal body (Scrollable) */}
                 <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
-                  {activeNewsModal.image_url && (
-                    <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
-                      <img
-                        src={activeNewsModal.image_url}
-                        alt="News Cover"
-                        className="w-full h-56 object-cover"
-                      />
-                    </div>
-                  )}
+                  <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                    <img
+                      src={activeNewsModal.image_url || '/logistics_fallback.png'}
+                      alt="News Cover"
+                      className="w-full h-56 object-cover"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/logistics_fallback.png';
+                      }}
+                    />
+                  </div>
 
                   {/* Description/Content */}
                   <div className="space-y-2">

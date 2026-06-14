@@ -489,6 +489,7 @@ export const RouteMap = ({
   }, [resetSignal, onSetActiveRoute]);
 
   const fetchRoutes = useCallback(async (start, end, mode) => {
+    if (replayingShipment) return;
     setLoading(true);
     try {
       const res = await axios.get(`${BASE_URL}/api/ai/directions`, {
@@ -578,7 +579,7 @@ export const RouteMap = ({
     } finally {
       setLoading(false);
     }
-  }, [freightMode]);
+  }, [freightMode, replayingShipment]);
 
   useEffect(() => {
     if (replayingShipment) {
@@ -653,7 +654,6 @@ export const RouteMap = ({
       };
 
       fetchReplayedIntel();
-      setReplayingShipment(null); // Clear the replaying state
       return;
     }
 

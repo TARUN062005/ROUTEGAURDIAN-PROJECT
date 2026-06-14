@@ -68,12 +68,16 @@ const NotificationsPage = () => {
     }
   };
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) {
+        setLoading(true);
+      }
       const res = await axios.get(`${BASE_URL}/api/ai/alerts`, { withCredentials: true });
       if (res.data?.success) {
-        setAlerts(res.data.alerts || []);
+        const freshAlerts = res.data.alerts || [];
+        setAlerts(freshAlerts);
+        sessionStorage.setItem("global_alerts_cache", JSON.stringify(freshAlerts));
       } else {
         toast.error("Failed to load live risk feed");
       }
@@ -85,7 +89,19 @@ const NotificationsPage = () => {
   };
 
   useEffect(() => {
-    fetchAlerts();
+    const cached = sessionStorage.getItem("global_alerts_cache");
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setAlerts(parsed);
+        setLoading(false);
+        fetchAlerts(true);
+        return;
+      } catch (e) {
+        console.warn("Failed to parse global alerts cache", e);
+      }
+    }
+    fetchAlerts(false);
   }, []);
 
   // Compute dynamic categories
@@ -261,10 +277,40 @@ const NotificationsPage = () => {
         </div>
 
         {/* SECTION 3: Alerts Grid */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-3">
-            <Loader2 className="animate-spin text-[#00C2FF]" size={36} />
-            <p className="text-sm text-[#9AA7B5] animate-pulse">Synchronizing threat intelligence...</p>
+        {loading && alerts.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="bg-[#101826] border border-white/5 rounded-2xl overflow-hidden flex flex-col h-[400px] animate-pulse">
+                <div className="h-44 bg-[#0B1220] flex items-center justify-center border-b border-white/5">
+                  <Globe size={28} className="text-white/5" />
+                </div>
+                <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="h-4 w-16 bg-white/5 rounded" />
+                      <div className="h-3 w-24 bg-white/5 rounded" />
+                    </div>
+                    <div className="h-5 w-full bg-white/5 rounded" />
+                    <div className="h-5 w-3/4 bg-white/5 rounded" />
+                    <div className="space-y-2 pt-2">
+                      <div className="h-3 w-full bg-white/5 rounded" />
+                      <div className="h-3 w-full bg-white/5 rounded" />
+                      <div className="h-3 w-2/3 bg-white/5 rounded" />
+                    </div>
+                  </div>
+                  <div className="space-y-3 pt-3 border-t border-white/5">
+                    <div className="flex justify-between items-center">
+                      <div className="h-3 w-20 bg-white/5 rounded" />
+                      <div className="h-3 w-16 bg-white/5 rounded" />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1 h-9 bg-white/5 rounded-xl" />
+                      <div className="flex-1 h-9 bg-white/5 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : filteredAlerts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 bg-[#101826] border border-white/5 rounded-2xl space-y-4">
@@ -298,67 +344,26 @@ const NotificationsPage = () => {
                     onClick={() => handleOpenAlert(n)}
                   >
                     {/* Cover / Icon Header */}
-                    {(() => {
-                      let domain = '';
-                      try {
-                        if (n.source_url) {
-                          domain = new URL(n.source_url).hostname;
-                        }
-                      } catch {}
-                      const favicon = domain ? `https://www.google.com/s2/favicons?sz=64&domain=${domain}` : null;
-                      
-                      if (n.image_url) {
-                        return (
-                          <div className="relative h-44 overflow-hidden bg-[#0B1220]">
-                            <img
-                              src={n.image_url}
-                              alt={n.title}
-                              loading="lazy"
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            />
-                            <div className="absolute top-3 right-3 z-10">
-                              <span
-                                className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg"
-                                style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
-                              >
-                                {n.severity}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      return (
-                        <div
-                          className="relative h-44 overflow-hidden border-b border-white/5 flex flex-col items-center justify-center p-4 gap-2 select-none"
-                          style={{ background: `linear-gradient(135deg, ${sevConf.color}08, ${sevConf.color}03)` }}
+                    <div className="relative h-44 overflow-hidden bg-[#0B1220] border-b border-white/5">
+                      <img
+                        src={n.image_url || '/logistics_fallback.png'}
+                        alt={n.title}
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/logistics_fallback.png';
+                        }}
+                      />
+                      <div className="absolute top-3 right-3 z-10">
+                        <span
+                          className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg"
+                          style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
                         >
-                          {favicon ? (
-                            <img
-                              src={favicon}
-                              alt={n.source || domain}
-                              className="w-12 h-12 rounded-xl bg-[#0B1220] p-1.5 border border-white/10 shadow-lg"
-                              onError={e => { e.currentTarget.style.display = 'none'; }}
-                            />
-                          ) : (
-                            <Globe size={28} className="opacity-40" style={{ color: sevConf.color }} />
-                          )}
-                          {n.source && (
-                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#7C8A99]">
-                              {n.source}
-                            </span>
-                          )}
-                          <div className="absolute top-3 right-3">
-                            <span
-                              className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg"
-                              style={{ background: sevConf.bg, color: sevConf.color, backdropFilter: "blur(4px)" }}
-                            >
-                              {n.severity}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                          {n.severity}
+                        </span>
+                      </div>
+                    </div>
 
                     {/* Card Content */}
                     <div className="p-5 flex-1 flex flex-col justify-between gap-4">
@@ -484,15 +489,17 @@ const NotificationsPage = () => {
 
                 {/* Modal Body (Scrollable) */}
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-                  {openAlert.image_url && (
-                    <div className="rounded-xl overflow-hidden border border-white/5 bg-[#0B1220]">
-                      <img
-                        src={openAlert.image_url}
-                        alt="News Cover"
-                        className="w-full h-56 object-cover"
-                      />
-                    </div>
-                  )}
+                  <div className="rounded-xl overflow-hidden border border-white/5 bg-[#0B1220]">
+                    <img
+                      src={openAlert.image_url || '/logistics_fallback.png'}
+                      alt="News Cover"
+                      className="w-full h-56 object-cover"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/logistics_fallback.png';
+                      }}
+                    />
+                  </div>
 
                   {/* Geopolitical Briefing Description */}
                   <div className="space-y-2">

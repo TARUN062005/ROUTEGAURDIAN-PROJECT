@@ -31,7 +31,7 @@ const cleanEvent = (e) => {
   if (!e) return e;
   
   let headline = e.headline || e.title || '';
-  let image_url = e.image_url || null;
+  let image_url = e.image || e.image_url || e.thumbnail || e.media || e.cover_image || e.link_image || null;
   
   // 1. Extract image_url if null/empty from HTML-escaped img tags or raw img tags in headline
   if (!image_url) {
@@ -82,11 +82,16 @@ function isValidLocation(q) {
   
   const INVALID_LOCATION_KEYWORDS = new Set([
     'sea', 'ship', 'road', 'air', 'flight', 'airplane', 'maritime',
-    'transport', 'cargo', 'rail', 'train', 'ground', 'land', 'truck'
+    'transport', 'cargo', 'rail', 'train', 'ground', 'land', 'truck',
+    'express', 'standard', 'economy', 'port', 'airport', 'way', 'route'
   ]);
   
   const allInvalid = words.every(word => INVALID_LOCATION_KEYWORDS.has(word));
-  return !allInvalid;
+  if (allInvalid) return false;
+
+  if (words.length === 1 && INVALID_LOCATION_KEYWORDS.has(words[0])) return false;
+
+  return true;
 }
 
 // HELPER: Strict Latin Script Enforcer (Protocol v17)
@@ -368,51 +373,6 @@ const airportResolver = new AirportResolver();
 const seaRouteProvider = new SeaRouteProvider(portResolver);
 const airRouteProvider = new AirRouteProvider(airportResolver);
 
-// ── Global Known Risk Zones ─────────────────────────────────────────────────
-// Each zone is checked against route checkpoints; matching zones are returned in intelligence.riskZones
-const GLOBAL_RISK_ZONES = [
-  {
-    id: 'red-sea', lat: 14.0, lon: 42.5, radiusKm: 700, name: 'Red Sea / Bab-el-Mandeb', type: 'conflict', baselineSeverity: 'CRITICAL',
-    reason: 'Houthi forces conducting active missile and drone attacks on commercial vessels. Over 60 incidents since Jan 2024. Major carriers have diverted via Cape of Good Hope, adding 10–14 transit days.',
-    keywords: ['red sea', 'houthi', 'bab el mandeb', 'yemen', 'suez']
-  },
-  {
-    id: 'hormuz', lat: 26.5, lon: 56.5, radiusKm: 300, name: 'Strait of Hormuz', type: 'conflict', baselineSeverity: 'HIGH',
-    reason: '~20% of global oil flows through this chokepoint daily. Heightened US-Iran tensions. Iran has conducted vessel seizures and naval exercises, creating periodic closure risk.',
-    keywords: ['hormuz', 'iran', 'gulf', 'persian gulf']
-  },
-  {
-    id: 'black-sea', lat: 46.0, lon: 33.0, radiusKm: 700, name: 'Black Sea', type: 'conflict', baselineSeverity: 'CRITICAL',
-    reason: 'Active Russia–Ukraine war. Shipping severely disrupted. Naval mines reported in transit corridors. Ukrainian grain export corridor under constant threat from military operations.',
-    keywords: ['ukraine', 'russia', 'black sea', 'crimea', 'odesa']
-  },
-  {
-    id: 'gulf-aden', lat: 12.5, lon: 47.5, radiusKm: 500, name: 'Gulf of Aden', type: 'piracy', baselineSeverity: 'HIGH',
-    reason: 'Historically elevated piracy risk zone. Regional instability has increased threat levels significantly. Armed groups targeting commercial vessels for ransom from adjacent coastlines.',
-    keywords: ['aden', 'somalia', 'piracy', 'hijack']
-  },
-  {
-    id: 'south-china', lat: 14.5, lon: 113.5, radiusKm: 900, name: 'South China Sea', type: 'dispute', baselineSeverity: 'MODERATE',
-    reason: 'Overlapping territorial claims by China, Taiwan, Philippines, Vietnam. Coast guard confrontations and naval standoffs frequently reported near disputed island chains and shipping corridors.',
-    keywords: ['south china', 'taiwan', 'philippine', 'spratly', 'paracel']
-  },
-  {
-    id: 'e-med', lat: 32.5, lon: 34.5, radiusKm: 500, name: 'Eastern Mediterranean', type: 'conflict', baselineSeverity: 'HIGH',
-    reason: 'Ongoing regional conflict affecting maritime security. Military operations and cross-border exchanges creating airspace and sea-lane uncertainty for commercial transit.',
-    keywords: ['israel', 'gaza', 'lebanon', 'hezbollah', 'eastern mediterranean']
-  },
-  {
-    id: 'taiwan-strait', lat: 24.0, lon: 120.5, radiusKm: 400, name: 'Taiwan Strait', type: 'dispute', baselineSeverity: 'HIGH',
-    reason: 'Military exercises and cross-strait tensions create periodic closure risks to this critical chokepoint handling ~50 ships per day. PLA naval exercises have previously halted transit.',
-    keywords: ['taiwan', 'pla', 'strait', 'china sea']
-  },
-  {
-    id: 'kerch', lat: 45.4, lon: 36.6, radiusKm: 250, name: 'Kerch Strait', type: 'conflict', baselineSeverity: 'HIGH',
-    reason: 'Ukraine-Russia conflict zone. Russia-controlled strait connecting Black Sea to Sea of Azov. Commercial shipping suspended and subject to military enforcement.',
-    keywords: ['kerch', 'azov', 'ukraine bridge']
-  },
-];
-
 function getDistance(p1, p2) {
   const R = 6371e3; // meters
   const φ1 = (p1[1] * Math.PI) / 180;
@@ -435,7 +395,7 @@ function hDistKm(p1, p2) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Check whether any route checkpoint falls within a buffer around a known risk zone
+// Check whether any route checkpoint falls within a buffer around a risk zone
 function routePassesNear(checkpoints, zone) {
   const buffer = zone.radiusKm + 700; // generous 700 km corridor buffer
   return checkpoints.some(cp => hDistKm([cp[0], cp[1]], [zone.lon, zone.lat]) < buffer);
@@ -444,27 +404,25 @@ function routePassesNear(checkpoints, zone) {
 function getCheckpoints(coords, mode) {
   if (!coords || coords.length < 2) return coords || [];
   
-  let totalDistKm = 0;
+  let L = 0;
   for (let i = 1; i < coords.length; i++) {
-    totalDistKm += hDistKm(coords[i - 1], coords[i]);
+    L += hDistKm(coords[i - 1], coords[i]);
   }
   
-  // Road: 50-100 km (average 75)
-  // Air: 200-300 km (average 250)
-  // Sea: 250-500 km (average 375)
-  let intervalKm = 75;
-  const m = (mode || '').toLowerCase();
-  if (m === 'air') {
-    intervalKm = 250;
-  } else if (m === 'sea' || m === 'ship') {
-    intervalKm = 375;
-  } else if (m === 'road' || m === 'truck') {
-    intervalKm = 75;
+  let intervalKm;
+  if (L < 150) {
+    intervalKm = L / 5;
+  } else if (L < 1000) {
+    intervalKm = L / 10;
+  } else {
+    intervalKm = L / 15;
   }
 
-  let count = Math.max(2, Math.round(totalDistKm / intervalKm) + 1);
-  if (count > 20) {
-    count = 20;
+  if (intervalKm <= 0) intervalKm = 10;
+
+  let count = Math.max(2, Math.round(L / intervalKm) + 1);
+  if (count > 50) {
+    count = 50;
   }
 
   const result = [];
@@ -663,13 +621,33 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
     const waypointData = await Promise.all(weatherPromises);
     const validWaypoints = waypointData.filter(Boolean);
 
-    // 4. Risk Zone Detection — match known global threat corridors to route checkpoints
-    const routeRiskZones = GLOBAL_RISK_ZONES
+    // 4. Risk Zone Detection — match active threat corridors to route checkpoints
+    const liveIncidents = await geoRiskService.getLiveIncidents();
+    const routeRiskZones = liveIncidents
+      .filter(event => event.location && Array.isArray(event.location))
+      .map((event, idx) => {
+         const lat = event.location[0];
+         const lon = event.location[1];
+         const radiusKm = Math.round(100 + (event.intensity || 0.5) * 200);
+         const severity = event.intensity >= 0.75 ? 'CRITICAL' : event.intensity >= 0.4 ? 'HIGH' : 'MODERATE';
+         return {
+           id: event.id || `dyn-zone-${idx}-${Date.now()}`,
+           lat,
+           lon,
+           radiusKm,
+           name: event.zone || event.headline?.split(':')[0] || 'Active Risk Zone',
+           type: event.label || event.category || 'conflict',
+           baselineSeverity: severity,
+           severity,
+           reason: event.headline || 'Active threat detected in this transit corridor.',
+           keywords: [event.zone || '', event.headline || ''].map(s => s.toLowerCase())
+         };
+      })
       .filter(zone => routePassesNear(checkpoints, zone))
       .map(zone => {
         const newsConfirmed = newsStatus.events?.some(e => {
           const txt = ((e.title || '') + ' ' + (e.impact || '')).toLowerCase();
-          return zone.keywords.some(kw => txt.includes(kw));
+          return zone.keywords.some(kw => kw && txt.includes(kw));
         });
         return { ...zone, severity: newsConfirmed ? 'CRITICAL' : zone.baselineSeverity, newsConfirmed };
       });
@@ -696,24 +674,13 @@ const getRouteIntelligence = async (coords, sourceName = "Mission Sector", destN
     };
 
     // 7. Static geopolitical news fallback — always provide links even without NEWSDATA_API_KEY
-    // Uses Google News search links scoped to each detected risk zone on the route
     if (finalIntel.newsFeed.length === 0 && routeRiskZones.length > 0) {
-      const ZONE_NEWS_LINKS = {
-        'red-sea': 'https://news.google.com/search?q=Red+Sea+Houthi+shipping+attack',
-        'hormuz': 'https://news.google.com/search?q=Strait+of+Hormuz+Iran+shipping+security',
-        'black-sea': 'https://news.google.com/search?q=Black+Sea+Ukraine+Russia+shipping',
-        'gulf-aden': 'https://news.google.com/search?q=Gulf+of+Aden+piracy+Somalia+shipping',
-        'south-china': 'https://news.google.com/search?q=South+China+Sea+dispute+shipping+security',
-        'e-med': 'https://news.google.com/search?q=Eastern+Mediterranean+conflict+shipping',
-        'taiwan-strait': 'https://news.google.com/search?q=Taiwan+Strait+military+tension+shipping',
-        'kerch': 'https://news.google.com/search?q=Kerch+Strait+Russia+Ukraine+Black+Sea',
-      };
       finalIntel.newsFeed = routeRiskZones.slice(0, 5).map(zone => ({
         type: zone.type,
         title: `${zone.name} — Active ${zone.baselineSeverity.charAt(0) + zone.baselineSeverity.slice(1).toLowerCase()} Risk Zone`,
         severity: zone.baselineSeverity === 'CRITICAL' ? 'high' : zone.baselineSeverity === 'HIGH' ? 'medium' : 'low',
         impact: zone.reason,
-        link: ZONE_NEWS_LINKS[zone.id] || `https://news.google.com/search?q=${encodeURIComponent(zone.name + ' shipping security')}`,
+        link: `https://news.google.com/search?q=${encodeURIComponent(zone.name + ' shipping security')}`,
         date: new Date().toISOString(),
         newsConfirmed: zone.newsConfirmed,
       }));
@@ -777,33 +744,6 @@ const fetchRoutesFromProvider = async (start, end, profile = 'driving') => {
 };
 
 function getMaritimeRegion(lat, lon) {
-  // Check canals & straits first (smaller bounding boxes)
-  if (lat >= 29.9 && lat <= 31.3 && lon >= 32.2 && lon <= 32.6) return "Suez Canal";
-  if (lat >= 12.5 && lat <= 13.0 && lon >= 43.0 && lon <= 43.5) return "Bab-el-Mandeb Strait";
-  if (lat >= 26.0 && lat <= 27.0 && lon >= 55.8 && lon <= 56.9) return "Strait of Hormuz";
-  if (lat >= 1.0 && lat <= 1.5 && lon >= 103.5 && lon <= 104.5) return "Singapore Strait";
-  if (lat >= 1.0 && lat <= 6.0 && lon >= 95.0 && lon <= 104.0) return "Strait of Malacca";
-  if (lat >= 8.9 && lat <= 9.3 && lon >= -80.0 && lon <= -79.7) return "Panama Canal";
-  if (lat >= 35.8 && lat <= 36.1 && lon >= -6.2 && lon <= -5.2) return "Strait of Gibraltar";
-
-  // Check seas & gulfs
-  if (lat >= 12.0 && lat <= 30.0 && lon >= 32.0 && lon <= 43.0) return "Red Sea";
-  if (lat >= 24.0 && lat <= 30.0 && lon >= 48.0 && lon <= 57.0) return "Persian Gulf";
-  if (lat >= 11.0 && lat <= 15.0 && lon >= 43.0 && lon <= 51.0) return "Gulf of Aden";
-  if (lat >= 5.0 && lat <= 25.0 && lon >= 50.0 && lon <= 77.0) return "Arabian Sea";
-  if (lat >= 5.0 && lat <= 23.0 && lon >= 77.0 && lon <= 98.0) return "Bay of Bengal";
-  if (lat >= -5.0 && lat <= 23.0 && lon >= 99.0 && lon <= 121.0) return "South China Sea";
-  if (lat >= 23.0 && lat <= 33.0 && lon >= 117.0 && lon <= 131.0) return "East China Sea";
-  if (lat >= 33.0 && lat <= 48.0 && lon >= 128.0 && lon <= 143.0) return "Sea of Japan";
-  if (lat >= 30.0 && lat <= 46.0 && lon >= -6.0 && lon <= 36.0) return "Mediterranean Sea";
-  if (lat >= 51.0 && lat <= 61.0 && lon >= -4.0 && lon <= 9.0) return "North Sea";
-  if (lat >= 49.0 && lat <= 51.2 && lon >= -6.0 && lon <= 2.0) return "English Channel";
-
-  // Oceans
-  if (lat >= -60.0 && lat <= 60.0 && lon >= -80.0 && lon <= -10.0) return "Atlantic Ocean";
-  if (lon >= 120.0 || lon <= -120.0) return "Pacific Ocean";
-  if (lat >= -40.0 && lat <= 10.0 && lon >= 20.0 && lon <= 120.0) return "Indian Ocean";
-
   return null;
 }
 
@@ -839,43 +779,13 @@ const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => 
     const isShip = mode === 'ship' || mode === 'sea';
     const isAir = mode === 'air';
 
-    // 1. Check local maritime bounding box first (extremely fast CPU check)
-    const seaName = getMaritimeRegion(lat, lon);
-    if (seaName) return seaName;
-
-    // 2. Round coordinates to 1 decimal place (~11km clustering) for caching
+    // 1. Round coordinates to 1 decimal place (~11km clustering) for caching
     const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)}`;
     if (geocodeCache.has(cacheKey)) {
       return geocodeCache.get(cacheKey);
     }
 
-    // 3. Proximity checks for ports/airports (Prisma lookups, very fast)
-    if (isShip) {
-      try {
-        const nearest = await portResolver.findNearest(lat, lon);
-        if (nearest && nearest.port && nearest.distanceKm < 80) {
-          const name = `${nearest.port.name} Port`;
-          geocodeCache.set(cacheKey, name);
-          return name;
-        }
-      } catch (e) {
-        console.warn(`[reverseGeocodePhoton] Port check failed: ${e.message}`);
-      }
-    } else if (isAir) {
-      try {
-        const nearest = await airportResolver.findNearest(lat, lon);
-        if (nearest && nearest.airport && nearest.distanceKm < 80) {
-          const code = nearest.airport.iata || nearest.airport.icao || '';
-          const name = `${nearest.airport.name}${code ? ` (${code})` : ''}`;
-          geocodeCache.set(cacheKey, name);
-          return name;
-        }
-      } catch (e) {
-        console.warn(`[reverseGeocodePhoton] Airport check failed: ${e.message}`);
-      }
-    }
-
-    // 4. Rate-limit defense: only query API for start, end, or sampled checkpoints
+    // 2. Rate-limit defense: only query API for start, end, or sampled checkpoints
     const isStartOrEnd = index === 0 || index === totalCheckpoints - 1;
     const sampleInterval = Math.max(1, Math.ceil(totalCheckpoints / 15)); // max ~15 API queries per route
     
@@ -898,6 +808,33 @@ const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => 
     }
   } catch (e) {
     console.warn(`[Photon Reverse Geocode] API failed for ${lat},${lon}:`, e.message);
+  }
+
+  // 3. Fallback: Query local datasets to find nearest port or airport
+  const isShip = mode === 'ship' || mode === 'sea';
+  if (isShip) {
+    try {
+      const nearest = await portResolver.findNearest(lat, lon);
+      if (nearest && nearest.port) {
+        const name = `Near ${nearest.port.name} Seaport`;
+        geocodeCache.set(cacheKey, name);
+        return name;
+      }
+    } catch (e) {
+      console.warn(`[reverseGeocodePhoton Fallback] Port check failed: ${e.message}`);
+    }
+  } else {
+    try {
+      const nearest = await airportResolver.findNearest(lat, lon);
+      if (nearest && nearest.airport) {
+        const code = nearest.airport.iata || nearest.airport.icao || '';
+        const name = `Near ${nearest.airport.name}${code ? ` (${code})` : ''} Airport`;
+        geocodeCache.set(cacheKey, name);
+        return name;
+      }
+    } catch (e) {
+      console.warn(`[reverseGeocodePhoton Fallback] Airport check failed: ${e.message}`);
+    }
   }
 
   return null; // post-processing will fill intermediate nodes
@@ -1010,16 +947,19 @@ const computeRouteInternal = async (startLat, startLng, endLat, endLng, rawVehic
   }
 
   // ── STRICT COORDINATE ENTITY VALIDATION (HTTP 422) ──────────────────────────────
+  const directDistance = hDistKm([sLon, sLat], [eLon, eLat]);
+  const snapLimit = Math.min(500, Math.max(50, directDistance * 0.2));
+
   if (isShip) {
     const [startRes, endRes] = await Promise.all([
       portResolver.findNearest(sLat, sLon),
       portResolver.findNearest(eLat, eLon),
     ]);
-    if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
+    if (startRes.distanceKm > snapLimit || endRes.distanceKm > snapLimit) {
       throw {
         status: 422,
         error: 'Invalid entity type for Sea mode',
-        details: `Coordinates must be within 2.0km of valid seaports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
+        details: `Coordinates must be within ${snapLimit.toFixed(1)}km of valid seaports. Origin distance: ${startRes.distanceKm.toFixed(1)}km, Destination distance: ${endRes.distanceKm.toFixed(1)}km. The location may be landlocked or remote.`
       };
     }
   } else if (isAir) {
@@ -1027,11 +967,11 @@ const computeRouteInternal = async (startLat, startLng, endLat, endLng, rawVehic
       airportResolver.findNearest(sLat, sLon),
       airportResolver.findNearest(eLat, eLon),
     ]);
-    if (startRes.distanceKm > 2.0 || endRes.distanceKm > 2.0) {
+    if (startRes.distanceKm > snapLimit || endRes.distanceKm > snapLimit) {
       throw {
         status: 422,
         error: 'Invalid entity type for Air mode',
-        details: `Coordinates must be within 2.0km of valid airports. Origin distance: ${startRes.distanceKm.toFixed(2)}km, Destination distance: ${endRes.distanceKm.toFixed(2)}km`
+        details: `Coordinates must be within ${snapLimit.toFixed(1)}km of valid airports. Origin distance: ${startRes.distanceKm.toFixed(1)}km, Destination distance: ${endRes.distanceKm.toFixed(1)}km. The location may be remote.`
       };
     }
   }
@@ -1508,6 +1448,24 @@ exports.analyzeRisk = async (req, res) => {
     const allEvents = modeResult?.events || [];
     const filteredEvents = allEvents.filter(isThreat).map(cleanEvent);
 
+    const riskZones = allEvents.filter(e => e.location && Array.isArray(e.location)).map((event, idx) => {
+      const lat = event.location[0];
+      const lon = event.location[1];
+      const radiusKm = Math.round(100 + (event.intensity || 0.5) * 200);
+      const severity = event.intensity >= 0.75 ? 'CRITICAL' : event.intensity >= 0.4 ? 'HIGH' : 'MODERATE';
+      return {
+        id: event.id || `dyn-zone-${idx}-${Date.now()}`,
+        lat,
+        lon,
+        radiusKm,
+        name: event.zone || event.headline?.split(':')[0] || 'Active Risk Zone',
+        type: event.label || event.category || 'conflict',
+        baselineSeverity: severity,
+        severity,
+        reason: event.headline || 'Active threat detected in this transit corridor.'
+      };
+    });
+
     const riskScore = modeResult?.risk_score != null ? Math.round(modeResult.risk_score * 100) : null;
     const safetyScore = modeResult?.safety_score != null ? Math.round(modeResult.safety_score * 100) : null;
 
@@ -1597,6 +1555,7 @@ Generate a JSON object matching this schema (do not include markdown syntax or e
       recommendedMode: geoRiskResult.recommended_mode,
       alertsCount: filteredEvents.length,
       events: filteredEvents,
+      riskZones,
       zoneIntersections: modeResult?.zone_intersections || [],
       waypointReports: weatherReports,
       summary: modeResult?.message || `Corridor risk evaluated as ${modeResult?.status || 'STABLE'}.`,
@@ -1616,7 +1575,7 @@ exports.createShipment = async (req, res) => {
   try {
     const {
       origin, destination, mode, distance, eta, riskScore, safetyScore, routeGeometry,
-      cargo, priority, date, time, weatherSummary, riskSummary, aiReport
+      cargo, priority, date, time, weatherSummary, riskSummary, aiReport, newsAlerts
     } = req.body;
     const { prisma } = require('../utils/dbConnector');
     const crypto = require('crypto');
@@ -1637,16 +1596,17 @@ exports.createShipment = async (req, res) => {
 
     if (routeHash) {
       const existing = await prisma.shipment.findFirst({
-        where: { routeHash }
+        where: { routeHash, userId: req.user.id }
       });
       if (existing) {
-        console.log(`[createShipment] Found duplicate shipment with routeHash: ${routeHash}. Bypassing creation.`);
+        console.log(`[createShipment] Found duplicate shipment with routeHash: ${routeHash} for user ${req.user.id}. Bypassing creation.`);
         return res.json({ success: true, shipment: existing, isDuplicate: true });
       }
     }
 
     const shipment = await prisma.shipment.create({
       data: {
+        userId: req.user.id,
         origin,
         destination,
         mode,
@@ -1663,6 +1623,7 @@ exports.createShipment = async (req, res) => {
         weatherSummary: weatherSummary || null,
         riskSummary: riskSummary || null,
         aiReport: typeof aiReport === 'object' ? JSON.stringify(aiReport) : (aiReport || null),
+        newsAlerts: newsAlerts || null,
         status: 'active'
       }
     });
@@ -1678,6 +1639,7 @@ exports.getShipments = async (req, res) => {
   try {
     const { prisma } = require('../utils/dbConnector');
     const shipments = await prisma.shipment.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' }
     });
     res.json({ success: true, shipments });
@@ -1691,8 +1653,8 @@ exports.getShipment = async (req, res) => {
   try {
     const { id } = req.params;
     const { prisma } = require('../utils/dbConnector');
-    const shipment = await prisma.shipment.findUnique({
-      where: { id }
+    const shipment = await prisma.shipment.findFirst({
+      where: { id, userId: req.user.id }
     });
     if (!shipment) {
       return res.status(404).json({ success: false, error: "Shipment not found." });
@@ -1759,6 +1721,7 @@ exports.resolvePort = async (req, res) => {
           isPort: false,
           distanceKm: null,
           nearestPort: null,
+          nearestPorts: matches,
           matches,
         });
       }
@@ -1767,6 +1730,7 @@ exports.resolvePort = async (req, res) => {
         isPort: false,
         distanceKm: null,
         nearestPort: null,
+        nearestPorts: [],
         matches: [],
       });
     }
@@ -1778,6 +1742,7 @@ exports.resolvePort = async (req, res) => {
       isPort: result.isPort,
       distanceKm: result.distanceKm,
       nearestPort: result.nearestPort,
+      nearestPorts: result.matches && result.matches.length > 0 ? result.matches : (result.nearestPort ? [result.nearestPort] : []),
       matches: result.matches,
     });
   } catch (err) {
@@ -1798,6 +1763,7 @@ exports.resolveAirport = async (req, res) => {
           isAirport: false,
           distanceKm: null,
           nearestAirport: null,
+          nearestAirports: matches,
           matches,
         });
       }
@@ -1806,6 +1772,7 @@ exports.resolveAirport = async (req, res) => {
         isAirport: false,
         distanceKm: null,
         nearestAirport: null,
+        nearestAirports: [],
         matches: [],
       });
     }
@@ -1817,6 +1784,7 @@ exports.resolveAirport = async (req, res) => {
       isAirport: result.isAirport,
       distanceKm: result.distanceKm,
       nearestAirport: result.nearestAirport,
+      nearestAirports: result.matches && result.matches.length > 0 ? result.matches : (result.nearestAirport ? [result.nearestAirport] : []),
       matches: result.matches,
     });
   } catch (err) {
@@ -1931,7 +1899,9 @@ exports.compareRoutes = async (req, res) => {
 exports.clearShipments = async (req, res) => {
   try {
     const { prisma } = require('../utils/dbConnector');
-    await prisma.shipment.deleteMany({});
+    await prisma.shipment.deleteMany({
+      where: { userId: req.user.id }
+    });
     res.json({ success: true });
   } catch (error) {
     console.error('[clearShipments] Error:', error.message);
@@ -1943,8 +1913,8 @@ exports.deleteShipment = async (req, res) => {
   try {
     const { id } = req.params;
     const { prisma } = require('../utils/dbConnector');
-    await prisma.shipment.delete({
-      where: { id }
+    await prisma.shipment.deleteMany({
+      where: { id, userId: req.user.id }
     });
     res.json({ success: true });
   } catch (error) {
