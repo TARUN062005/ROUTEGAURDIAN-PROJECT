@@ -32,6 +32,9 @@ const aiRoutes = require('./routes/ai.routes');
 
 const app = express();
 
+// Set trust proxy to 1 so express-rate-limit can see the real client IP behind Render's load balancers.
+app.set('trust proxy', 1);
+
 // ✅ INITIALIZE BROADCAST SCHEDULER (IMPORTANT FOR SCHEDULED NOTIFICATIONS)
 let broadcastScheduler;
 let emailService;

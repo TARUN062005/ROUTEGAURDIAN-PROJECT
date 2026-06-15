@@ -45,19 +45,7 @@ const DashboardLayout = () => {
     setIsProfileOpen(false);
   }, [location.pathname]);
 
-  // On layout mount, trigger Render warmup
-  useEffect(() => {
-    if (!user) return;
-    const triggerWarmup = async () => {
-      try {
-        await axios.post("/api/ai/warmup", {}, { withCredentials: true });
-        console.log("[Warmup] Wakeup ping sent to backend");
-      } catch (err) {
-        console.warn("[Warmup] Wakeup ping failed:", err.message);
-      }
-    };
-    triggerWarmup();
-  }, [user]);
+  // Warmup is managed entirely server-side during session init / logins to prevent 403s & cold-starts
 
   // Active User Heartbeat Tracking using visibility and focus
   useEffect(() => {

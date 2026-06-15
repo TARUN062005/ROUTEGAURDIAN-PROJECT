@@ -179,6 +179,15 @@ class AuthController {
         res.cookie('access_token', accessToken, accessCookieOptions());
         res.cookie('refresh_token', refreshToken, refreshCookieOptions());
         res.cookie('XSRF-TOKEN', csrfToken, csrfCookieOptions());
+
+        // Trigger server-side background warmup for GeoRiskEngine
+        try {
+          const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+          GeoRiskWarmupService.triggerWarmup();
+        } catch (warmupErr) {
+          console.warn('[Warmup] Failed to trigger GeoRisk warmup in googleCallback:', warmupErr.message);
+        }
+
         return res.redirect(`${clientUrl}/dashboard`);
       } catch (err) {
         clearOAuthCode(code);
@@ -229,6 +238,15 @@ class AuthController {
         res.cookie('access_token', accessToken, accessCookieOptions());
         res.cookie('refresh_token', refreshToken, refreshCookieOptions());
         res.cookie('XSRF-TOKEN', csrfToken, csrfCookieOptions());
+
+        // Trigger server-side background warmup for GeoRiskEngine
+        try {
+          const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+          GeoRiskWarmupService.triggerWarmup();
+        } catch (warmupErr) {
+          console.warn('[Warmup] Failed to trigger GeoRisk warmup in githubCallback:', warmupErr.message);
+        }
+
         return res.redirect(`${clientUrl}/dashboard`);
       } catch (err) {
         clearOAuthCode(code);
@@ -326,6 +344,14 @@ class AuthController {
       const user = await userService.findById(req.user.id);
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      // Trigger server-side background warmup for GeoRiskEngine
+      try {
+        const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+        GeoRiskWarmupService.triggerWarmup();
+      } catch (warmupErr) {
+        console.warn('[Warmup] Failed to trigger GeoRisk warmup in getProfile:', warmupErr.message);
       }
 
       return res.status(200).json({
@@ -512,6 +538,14 @@ class AuthController {
       res.cookie('access_token', accessToken, aOptions);
       res.cookie('refresh_token', refreshToken, rOptions);
       res.cookie('XSRF-TOKEN', csrfToken, csrfCookieOptions());
+
+      // Trigger server-side background warmup for GeoRiskEngine
+      try {
+        const GeoRiskWarmupService = require('../services/GeoRiskWarmupService');
+        GeoRiskWarmupService.triggerWarmup();
+      } catch (warmupErr) {
+        console.warn('[Warmup] Failed to trigger GeoRisk warmup in login:', warmupErr.message);
+      }
 
       return res.json({
         success: true,

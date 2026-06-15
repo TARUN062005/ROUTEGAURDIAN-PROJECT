@@ -10,8 +10,26 @@ const csrfProtection = (req, res, next) => {
     return next();
   }
 
+  // Exempt public auth, session control, background heartbeat & warmup endpoints from CSRF
+  const exemptPaths = [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/verify-email',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+    '/api/auth/refresh',
+    '/api/auth/logout',
+    '/api/user/active-ping',
+    '/api/ai/warmup'
+  ];
+
+  if (exemptPaths.includes(req.path)) {
+    return next();
+  }
+
   const csrfCookie = req.cookies['XSRF-TOKEN'];
-  const csrfHeader = req.headers['x-xsrf-token'];
+  // Support both standard XSRF and general CSRF custom header names
+  const csrfHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'];
 
   if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
     console.warn(`[SECURITY] CSRF Validation Failed. IP: ${req.ip || 'Unknown'}, Path: ${req.path}`);

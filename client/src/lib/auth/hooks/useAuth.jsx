@@ -19,6 +19,7 @@ axios.interceptors.request.use(
     const xsrfToken = getCookie('XSRF-TOKEN');
     if (xsrfToken && ['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase())) {
       config.headers['X-XSRF-TOKEN'] = xsrfToken;
+      config.headers['X-CSRF-Token'] = xsrfToken;
     }
     return config;
   },
