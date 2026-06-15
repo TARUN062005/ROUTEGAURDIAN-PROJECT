@@ -35,6 +35,16 @@ const csrfProtection = (req, res, next) => {
   // Support both standard XSRF and general CSRF custom header names
   const csrfHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'];
 
+  // Diagnostics for AI routes only
+  const isAiRoute = req.path.startsWith('/ai') || req.path.startsWith('/api/ai') || req.originalUrl.includes('/ai/');
+  if (isAiRoute) {
+    const cookieNames = req.cookies ? Object.keys(req.cookies) : [];
+    const userId = req.user ? req.user.id : 'N/A';
+    const match = (csrfCookie && csrfHeader && csrfCookie === csrfHeader) ? 'Match' : 'Mismatch';
+    const resultStatus = match === 'Match' ? 'Pass' : '403 Forbidden';
+    console.log(`[CSRF DIAGNOSTIC] Path: ${req.path}, OriginalUrl: ${req.originalUrl}, CookieKeys: ${JSON.stringify(cookieNames)}, CookieVal: ${csrfCookie ? 'Present' : 'Missing'}, HeaderVal: ${csrfHeader ? 'Present' : 'Missing'}, Status: ${match}, UserID: ${userId}, Result: ${resultStatus}`);
+  }
+
   if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
     console.warn(`[SECURITY] CSRF Validation Failed. IP: ${req.ip || 'Unknown'}, Path: ${req.path}`);
     return res.status(403).json({

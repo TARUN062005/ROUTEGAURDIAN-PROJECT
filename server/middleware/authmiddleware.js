@@ -16,9 +16,11 @@ function getTokenFromRequest(req) {
  * - Blocks suspended accounts even if token is old
  */
 const verifyToken = async (req, res, next) => {
+  const isAiRoute = req.path.startsWith('/ai') || req.path.startsWith('/api/ai') || req.originalUrl.includes('/ai/');
   try {
     if (!JWT_SECRET) {
       console.error('SECURITY CRITICAL: JWT_SECRET is not defined in environment variables.');
+      if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: JWT_SECRET missing`);
       return res.status(500).json({
         success: false,
         message: 'Internal server configuration error'
@@ -28,6 +30,7 @@ const verifyToken = async (req, res, next) => {
     const token = getTokenFromRequest(req);
 
     if (!token) {
+      if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: Token missing`);
       return res.status(401).json({
         success: false,
         message: 'Access token required'
@@ -38,6 +41,7 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     if (!decoded?.id || decoded.type !== 'access') {
+      if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: Invalid token payload or type`);
       return res.status(401).json({
         success: false,
         message: 'Invalid token payload or type'
@@ -59,6 +63,7 @@ const verifyToken = async (req, res, next) => {
     });
 
     if (!user) {
+      if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: User not found in DB`);
       return res.status(401).json({
         success: false,
         message: 'User not found for this token'
@@ -67,6 +72,7 @@ const verifyToken = async (req, res, next) => {
 
     // 3) Block suspended accounts always
     if (user.isActive === false) {
+      if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: User suspended`);
       return res.status(403).json({
         success: false,
         message: 'Account suspended. Please reactivate via email.',
@@ -84,9 +90,15 @@ const verifyToken = async (req, res, next) => {
       phoneVerified: user.phoneVerified
     };
 
+    if (isAiRoute) {
+      const cookieNames = req.cookies ? Object.keys(req.cookies) : [];
+      console.log(`[AUTH DIAGNOSTIC] Path: ${req.path}, OriginalUrl: ${req.originalUrl}, CookieKeys: ${JSON.stringify(cookieNames)}, UserID: ${user.id}, Status: Pass`);
+    }
+
     next();
   } catch (error) {
     console.error('Auth middleware error:', error.message);
+    if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed with catch error: ${error.message}`);
 
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ success: false, message: 'Token expired', code: 'TOKEN_EXPIRED' });
