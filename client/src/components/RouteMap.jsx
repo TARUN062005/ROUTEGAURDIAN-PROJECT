@@ -173,7 +173,7 @@ const ClusteredIncidentMarkers = ({ events }) => {
                     if (event.image_url) {
                       return (
                         <a href={event.source_url || '#'} target={event.source_url ? "_blank" : undefined} rel="noreferrer" className={event.source_url ? "block mb-2" : "block mb-2 pointer-events-none"}>
-                          <img src={event.image_url} alt={event.headline} loading="lazy" className="w-full h-24 object-cover rounded-lg hover:opacity-90 transition-opacity" />
+                          <img src={event.image_url} alt={event.headline} loading="lazy" className="w-full h-24 object-cover rounded-lg hover:opacity-90 transition-opacity" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/logistics_fallback.png'; }} />
                         </a>
                       );
                     }

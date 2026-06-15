@@ -409,17 +409,8 @@ function getCheckpoints(coords, mode) {
     L += hDistKm(coords[i - 1], coords[i]);
   }
   
-  let intervalKm;
-  if (L < 150) {
-    intervalKm = L / 5;
-  } else if (L < 1000) {
-    intervalKm = L / 10;
-  } else {
-    intervalKm = L / 15;
-  }
-
-  if (intervalKm <= 0) intervalKm = 10;
-
+  // Target a weather checkpoint approximately every 50 km
+  const intervalKm = 50;
   let count = Math.max(2, Math.round(L / intervalKm) + 1);
   if (count > 50) {
     count = 50;
@@ -774,13 +765,18 @@ function getWeatherDetails(code) {
 
 const geocodeCache = new Map();
 
-const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => {
-  try {
-    const isShip = mode === 'ship' || mode === 'sea';
-    const isAir = mode === 'air';
+const isCoordinateLike = (str) => {
+  if (!str) return false;
+  return /^\s*[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?\s*$/.test(str) || /\b(lat|lon|latitude|longitude)\b/i.test(str);
+};
 
+const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => {
+  const isShip = mode === 'ship' || mode === 'sea';
+  const isAir = mode === 'air';
+  const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)}`;
+
+  try {
     // 1. Round coordinates to 1 decimal place (~11km clustering) for caching
-    const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)}`;
     if (geocodeCache.has(cacheKey)) {
       return geocodeCache.get(cacheKey);
     }
@@ -800,7 +796,7 @@ const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => 
         const country = props.country || '';
         const parts = [name, country].filter(Boolean);
         const formatted = parts.join(', ');
-        if (formatted && !/\b\d+\.\d+\b/.test(formatted)) {
+        if (formatted && !isCoordinateLike(formatted) && !/\b\d+\.\d+\b/.test(formatted)) {
           geocodeCache.set(cacheKey, formatted);
           return formatted;
         }
@@ -811,7 +807,6 @@ const reverseGeocodePhoton = async (lat, lon, mode, index, totalCheckpoints) => 
   }
 
   // 3. Fallback: Query local datasets to find nearest port or airport
-  const isShip = mode === 'ship' || mode === 'sea';
   if (isShip) {
     try {
       const nearest = await portResolver.findNearest(lat, lon);

@@ -32,7 +32,7 @@ const setCsrfToken = (req, res, next) => {
     const token = crypto.randomBytes(24).toString('hex');
     res.cookie('XSRF-TOKEN', token, {
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });

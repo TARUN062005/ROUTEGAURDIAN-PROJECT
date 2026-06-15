@@ -6,6 +6,7 @@ class GeoRiskWarmupService {
     this.pingIntervalId = null;
     this.pruneIntervalId = null;
     this.baseUrl = process.env.GEO_RISK_ENGINE_URL || 'https://geo-risk-engine-ml-model.onrender.com';
+    this.lastWarmupTime = 0;
     this.startPruner();
   }
 
@@ -24,16 +25,27 @@ class GeoRiskWarmupService {
 
   // Manual/Explicit warmup trigger (e.g. from app mount or explicit actions)
   async triggerWarmup() {
+    const now = Date.now();
+    const cooldownMs = 3 * 60 * 1000; // 3 minutes cooldown
+    if (now - this.lastWarmupTime < cooldownMs) {
+      console.log(`[WarmupService] Cooldown active. Skipping wakeup request. Time remaining: ${Math.round((cooldownMs - (now - this.lastWarmupTime)) / 1000)}s`);
+      return;
+    }
+    this.lastWarmupTime = now;
+
     try {
       console.log(`[WarmupService] Pinging Render service for warmup: ${this.baseUrl}/health`);
-      // Try /health first
-      await axios.get(`${this.baseUrl}/health`, { timeout: 8000 }).catch(async () => {
-        // Fallback to base url if /health fails
-        return axios.get(this.baseUrl, { timeout: 8000 });
+      // Non-blocking ping chain: /health -> /ready -> base URL
+      axios.get(`${this.baseUrl}/health`, { timeout: 8000 }).catch(() => {
+        return axios.get(`${this.baseUrl}/ready`, { timeout: 8000 }).catch(() => {
+          return axios.get(this.baseUrl, { timeout: 8000 });
+        });
+      }).catch(err => {
+        console.warn(`[WarmupService] All wakeup routes failed: ${err.message}`);
       });
-      console.log(`[WarmupService] Render warmup ping succeeded/sent.`);
+      console.log(`[WarmupService] Render warmup ping sent asynchronously (non-blocking).`);
     } catch (err) {
-      console.warn(`[WarmupService] Render warmup ping warning: ${err.message}`);
+      console.warn(`[WarmupService] Render warmup ping trigger warning: ${err.message}`);
     }
   }
 

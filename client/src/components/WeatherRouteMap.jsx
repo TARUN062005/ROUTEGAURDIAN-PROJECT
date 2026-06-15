@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, Circle, Popup, useMapEvents } from "react-leaflet";
+import axios from "axios";
 
 const WEATHER_RISK = ["Rain", "Drizzle", "Thunderstorm", "Snow"];
+
+function getWeatherCondition(code) {
+  if (code >= 95) return "Thunderstorm";
+  if (code >= 80) return "Rain";
+  if (code >= 71 && code <= 75) return "Snow";
+  if (code >= 61) return "Rain";
+  if (code >= 51) return "Drizzle";
+  return "Clear";
+}
 
 function getIntermediatePoints(start, end, steps = 7) {
   let latDiff = (end[0] - start[0]) / steps;
@@ -45,13 +55,18 @@ export default function WeatherRouteMap() {
 
     for (let p of routePoints) {
       try {
-        const res = await fetch(`http://localhost:5000/weather?lat=${p[0]}&lon=${p[1]}`);
-        const data = await res.json();
-        if (WEATHER_RISK.includes(data.weather)) {
-          setRisks((prev) => [
-            ...prev,
-            { lat: data.lat, lon: data.lon, weather: data.weather, temp: data.temp },
-          ]);
+        const res = await axios.get(`/api/ai/weather?lat=${p[0]}&lon=${p[1]}`);
+        const data = res.data;
+        if (data.success && data.weather) {
+          const current = data.weather;
+          const condition = getWeatherCondition(current.weathercode);
+          const temp = current.temperature;
+          if (WEATHER_RISK.includes(condition)) {
+            setRisks((prev) => [
+              ...prev,
+              { lat: p[0], lon: p[1], weather: condition, temp: temp },
+            ]);
+          }
         }
       } catch (e) {
         // Ignore errors for demo

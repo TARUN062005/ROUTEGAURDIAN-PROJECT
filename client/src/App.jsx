@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
+import axios from 'axios';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -17,6 +19,37 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import ProtectedRoutes from './components/common/ProtectedRoutes';
 
 function App() {
+  useEffect(() => {
+    const runWarmup = async () => {
+      const warmedUp = sessionStorage.getItem('app_warmed_up');
+      if (warmedUp) return;
+
+      let toastId = null;
+      const timeoutId = setTimeout(() => {
+        toastId = toast.loading('Initializing intelligence services...', {
+          id: 'warmup-toast',
+          duration: Infinity,
+        });
+      }, 1500);
+
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+        await axios.get(`${backendUrl}/health`, { timeout: 15000 });
+        sessionStorage.setItem('app_warmed_up', 'true');
+      } catch (err) {
+        console.warn('Warmup request failed:', err.message);
+      } finally {
+        clearTimeout(timeoutId);
+        if (toastId) {
+          toast.dismiss(toastId);
+          toast.success('Intelligence services initialized.', { duration: 3000 });
+        }
+      }
+    };
+
+    runWarmup();
+  }, []);
+
   return (
     <>
       <Toaster

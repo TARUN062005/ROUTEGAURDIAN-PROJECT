@@ -14,7 +14,7 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
   useEffect(() => {
     const fetchFullProfile = async () => {

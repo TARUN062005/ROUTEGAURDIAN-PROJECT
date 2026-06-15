@@ -1609,7 +1609,8 @@ class AdminController {
       // CTA URL validation
       if (cta?.url && cta.url.trim()) {
         try {
-          const urlToCheck = cta.url.startsWith("/") ? `http://localhost${cta.url}` : cta.url;
+          const dummyOrigin = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',')[0].trim() : 'https://example.com';
+          const urlToCheck = cta.url.startsWith("/") ? `${dummyOrigin}${cta.url}` : cta.url;
           const parsed = new URL(urlToCheck);
 
           if (!cta.url.startsWith("/") && !["http:", "https:"].includes(parsed.protocol)) {
@@ -1886,7 +1887,7 @@ class AdminController {
                         name: user.name || "User",
                         email: user.email,
                         message: message || "",
-                        unsubscribeUrl: `${process.env.APP_URL || "http://localhost:5173"}/unsubscribe/${user.id}`,
+                        unsubscribeUrl: `${(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',')[0].trim() : '') || process.env.APP_URL || ''}/unsubscribe/${user.id}`,
                         notificationId: createdNotification.id,
                         appName: process.env.APP_NAME || "Our App",
                       });

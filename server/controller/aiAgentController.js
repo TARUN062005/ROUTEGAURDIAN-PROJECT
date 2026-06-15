@@ -101,6 +101,7 @@ function deterministicParse(message, state = {}) {
         do {
             prevOrig = origCandidate;
             origCandidate = origCandidate
+                .replace(/^(safest|fastest|cheapest|quickest|optimal|secure|greenest|eco-friendly)\s+/gi, '')
                 .replace(/^(sea\s+route|air\s+route|road\s+route|maritime\s+route|sea\s+shipment|air\s+shipment|road\s+shipment|shipment|route|cargo|freight|from|transport|port\s+of|airport\s+of|near|at|in)\s+/gi, '')
                 .trim();
         } while (origCandidate !== prevOrig);
@@ -176,14 +177,20 @@ function deterministicParse(message, state = {}) {
     };
 }
 
-const geocode = async (query, PORT) => {
+const geocode = async (query) => {
     if (!query || !isValidLocation(query)) return null;
     try {
-        const res = await axios.get(
-            `http://localhost:${PORT}/api/ai/search?q=${encodeURIComponent(query)}&limit=1`,
-            { timeout: 5000 }
-        );
-        const data = res.data.results?.[0] || res.data?.[0];
+        const aiRouteController = require('./aiRouteController');
+        const mockReq = { query: { q: query, limit: 1 } };
+        let results = null;
+        const mockRes = {
+            json: (data) => {
+                results = data;
+                return mockRes;
+            }
+        };
+        await aiRouteController.searchLocation(mockReq, mockRes);
+        const data = results?.[0];
         if (data) {
             const lat = parseFloat(data.lat || data.latitude);
             const lon = parseFloat(data.lon || data.longitude || data.lng);
@@ -195,7 +202,9 @@ const geocode = async (query, PORT) => {
                 address: data.address || {}
             };
         }
-    } catch {}
+    } catch (err) {
+        console.warn('[AGENT GEOCODE INTERNAL] Mock request failed:', err.message);
+    }
     try {
         const gr = await axios.get(
             `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
@@ -560,8 +569,8 @@ Answer:`;
 
         // Geocode locations
         const [startGeo, endGeo] = await Promise.all([
-            geocode(originQuery, PORT),
-            geocode(destQuery, PORT)
+            geocode(originQuery),
+            geocode(destQuery)
         ]);
 
         if (!startGeo || !endGeo) {

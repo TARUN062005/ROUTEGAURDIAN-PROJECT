@@ -324,6 +324,15 @@ if (process.env.SERVE_ADMIN_CLIENT === 'true') {
  * ------------------ HEALTH & INFO ------------------
  */
 app.get('/health', (req, res) => {
+  try {
+    const GeoRiskWarmupService = require('./services/GeoRiskWarmupService');
+    GeoRiskWarmupService.triggerWarmup().catch(err => {
+      console.warn('[Warmup] GeoRisk ML Model trigger error:', err.message);
+    });
+  } catch (wErr) {
+    console.warn('[Warmup] Failed to import/execute GeoRiskWarmupService:', wErr.message);
+  }
+
   res.status(200).json({
     success: true,
     status: 'healthy',
