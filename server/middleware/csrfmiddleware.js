@@ -12,18 +12,22 @@ const csrfProtection = (req, res, next) => {
 
   // Exempt public auth, session control, background heartbeat & warmup endpoints from CSRF
   const exemptPaths = [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/verify-email',
-    '/api/auth/forgot-password',
-    '/api/auth/reset-password',
-    '/api/auth/refresh',
-    '/api/auth/logout',
-    '/api/user/active-ping',
-    '/api/ai/warmup'
+    '/auth/login',
+    '/auth/register',
+    '/auth/verify-email',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    '/auth/refresh',
+    '/auth/logout',
+    '/user/active-ping',
+    '/ai/warmup'
   ];
 
-  if (exemptPaths.includes(req.path)) {
+  const path = req.path;
+  const originalPath = req.originalUrl.split('?')[0];
+
+  const isExempt = exemptPaths.some(p => path === p || originalPath === p || originalPath === `/api${p}`);
+  if (isExempt) {
     return next();
   }
 

@@ -203,7 +203,7 @@ class GeoRiskService {
           throw err; // pass it to the controller
         }
 
-        const isRetryable = err.code === 'ECONNABORTED' || !err.response || [502, 503, 504].includes(err.response.status);
+        const isRetryable = err.code === 'ECONNABORTED' || !err.response || [429, 502, 503, 504].includes(err.response.status);
         if (isRetryable && attempt < retries) {
           console.log(`[GeoRiskService] Service might be waking up. Waiting ${delay}ms before next retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -230,16 +230,18 @@ class GeoRiskService {
       { origin: 'Dubai, UAE', destination: 'Singapore' }
     ];
 
-    const promises = corridors.map(async (c) => {
+    const results = [];
+    for (const c of corridors) {
       try {
-        return await this.analyzeRoute(c.origin, c.destination, 300, 0.1);
+        const res = await this.analyzeRoute(c.origin, c.destination, 300, 0.1);
+        results.push(res);
       } catch (err) {
         console.warn(`[GeoRiskService] Failed background aggregation query for ${c.origin} -> ${c.destination}: ${err.message}`);
-        return null;
+        results.push(null);
       }
-    });
-
-    const results = await Promise.all(promises);
+      // Spacing delay to prevent rate-limiter (429) triggers on Render
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
     const uniqueEventsMap = new Map();
 
     for (const res of results) {
