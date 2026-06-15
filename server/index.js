@@ -137,6 +137,8 @@ const corsOptions = {
     'Access-Control-Request-Headers',
     'X-XSRF-TOKEN',
     'x-xsrf-token',
+    'X-CSRF-Token',
+    'x-csrf-token',
   ],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   maxAge: 86400,
