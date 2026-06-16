@@ -1787,11 +1787,13 @@ Generate a JSON object matching this schema (do not include markdown syntax, bac
 };
 
 exports.createShipment = async (req, res) => {
+  const startTime = Date.now();
   try {
     console.log('[DIAGNOSTIC - CREATE SHIPMENT REQUEST]', JSON.stringify(req.body, null, 2));
     const {
       origin, destination, mode, distance, eta, riskScore, safetyScore, routeGeometry,
-      cargo, priority, date, time, weatherSummary, riskSummary, aiReport, newsAlerts
+      cargo, priority, date, time, weatherSummary, riskSummary, aiReport, newsAlerts,
+      waypointReports
     } = req.body;
     const { prisma } = require('../utils/dbConnector');
     const crypto = require('crypto');
@@ -1821,9 +1823,11 @@ exports.createShipment = async (req, res) => {
           risk_score: existing.riskScore,
           safety_score: existing.safetyScore,
           ai_report: existing.aiReport,
-          news_alerts: existing.newsAlerts
+          news_alerts: existing.newsAlerts,
+          waypoint_reports: existing.waypointReports
         };
         console.log('[DIAGNOSTIC - CREATE SHIPMENT RESPONSE (DUPLICATE)]', JSON.stringify(returnedExisting, null, 2));
+        console.log(`[SHIPMENT SAVE TIME] duplicate=true time=${Date.now() - startTime}ms`);
         return res.json({ success: true, shipment: returnedExisting, isDuplicate: true });
       }
     }
@@ -1835,6 +1839,7 @@ exports.createShipment = async (req, res) => {
         destination,
         mode,
         distance: parseFloat(distance) || 0,
+        node_id: null,
         eta: parseFloat(eta) || 0,
         riskScore: riskScore != null ? parseFloat(riskScore) : null,
         safetyScore: safetyScore != null ? parseFloat(safetyScore) : null,
@@ -1848,6 +1853,7 @@ exports.createShipment = async (req, res) => {
         riskSummary: riskSummary || null,
         aiReport: typeof aiReport === 'object' ? JSON.stringify(aiReport) : (aiReport || null),
         newsAlerts: newsAlerts || null,
+        waypointReports: waypointReports || null,
         status: 'active'
       }
     });
@@ -1857,10 +1863,12 @@ exports.createShipment = async (req, res) => {
       risk_score: shipment.riskScore,
       safety_score: shipment.safetyScore,
       ai_report: shipment.aiReport,
-      news_alerts: shipment.newsAlerts
+      news_alerts: shipment.newsAlerts,
+      waypoint_reports: shipment.waypointReports
     };
 
     console.log('[DIAGNOSTIC - CREATE SHIPMENT RESPONSE]', JSON.stringify(returnedShipment, null, 2));
+    console.log(`[SHIPMENT SAVE TIME] duplicate=false time=${Date.now() - startTime}ms`);
     res.json({ success: true, shipment: returnedShipment });
   } catch (error) {
     console.error('[createShipment] Error:', error.message);
@@ -1869,19 +1877,39 @@ exports.createShipment = async (req, res) => {
 };
 
 exports.getShipments = async (req, res) => {
+  const startTime = Date.now();
   try {
     const { prisma } = require('../utils/dbConnector');
     const shipments = await prisma.shipment.findMany({
       where: { userId: req.user.id },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        userId: true,
+        origin: true,
+        destination: true,
+        mode: true,
+        distance: true,
+        eta: true,
+        riskScore: true,
+        safetyScore: true,
+        routeHash: true,
+        cargo: true,
+        priority: true,
+        date: true,
+        time: true,
+        weatherSummary: true,
+        riskSummary: true,
+        status: true,
+        createdAt: true
+      }
     });
     const returnedShipments = shipments.map(s => ({
       ...s,
       risk_score: s.riskScore,
-      safety_score: s.safetyScore,
-      ai_report: s.aiReport,
-      news_alerts: s.newsAlerts
+      safety_score: s.safetyScore
     }));
+    console.log(`[DASHBOARD LOAD TIME] Loaded ${returnedShipments.length} shipments time=${Date.now() - startTime}ms`);
     res.json({ success: true, shipments: returnedShipments });
   } catch (error) {
     console.error('[getShipments] Error:', error.message);
@@ -1904,7 +1932,8 @@ exports.getShipment = async (req, res) => {
       risk_score: shipment.riskScore,
       safety_score: shipment.safetyScore,
       ai_report: shipment.aiReport,
-      news_alerts: shipment.newsAlerts
+      news_alerts: shipment.newsAlerts,
+      waypoint_reports: shipment.waypointReports
     };
     res.json({ success: true, shipment: returnedShipment });
   } catch (error) {

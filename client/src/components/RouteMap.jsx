@@ -605,7 +605,111 @@ export const RouteMap = ({
   useEffect(() => {
     if (replayingShipment) {
       console.log('[RouteMap] Restoring replayed shipment state...', replayingShipment);
-      const coords = replayingShipment.routeGeometry.coordinates || [];
+      const coords = replayingShipment.routeGeometry?.coordinates || [];
+      const riskScore = replayingShipment.riskScore !== undefined ? replayingShipment.riskScore : replayingShipment.risk_score;
+      const safetyScore = replayingShipment.safetyScore !== undefined ? replayingShipment.safetyScore : replayingShipment.safety_score;
+      const waypoints = replayingShipment.waypointReports || replayingShipment.waypoint_reports || [];
+      const alerts = replayingShipment.newsAlerts || replayingShipment.news_alerts || [];
+      const aiReport = replayingShipment.aiReport || replayingShipment.ai_report;
+
+      const getLocalRiskLevel = (score) => {
+        if (score == null) return 'UNKNOWN';
+        let val = parseFloat(score);
+        if (Number.isNaN(val)) return 'UNKNOWN';
+        if (val > 0 && val <= 1.0) val = Math.round(val * 100);
+        else val = Math.round(val);
+        if (val <= 20) return 'LOW';
+        if (val <= 40) return 'MODERATE';
+        if (val <= 60) return 'HIGH';
+        return 'CRITICAL';
+      };
+
+      const severity = getLocalRiskLevel(riskScore);
+
+      const mappedAiReport = aiReport ? { ...aiReport } : {
+        executiveSummary: replayingShipment.riskSummary || 'Risk intelligence restored from saved shipment.',
+        routeOverview: `Transit from ${replayingShipment.origin} to ${replayingShipment.destination}.`,
+        geopoliticalAssessment: 'Geopolitical assessment restored.',
+        weatherAssessment: 'Weather corridor assessment restored.',
+        operationalImpact: 'Operational impact restored.',
+        topThreats: ['Telemetry record playback active.'],
+        recommendedActions: 'Proceed according to plan.',
+        alternativeModeAnalysis: 'Alternative mode evaluation restored.',
+        operatorDecision: 'PROCEED'
+      };
+
+      // Ensure duplicate keys for camelCase and snake_case compatibility in aiReport
+      mappedAiReport.executiveSummary = mappedAiReport.executiveSummary || mappedAiReport.executive_summary;
+      mappedAiReport.executive_summary = mappedAiReport.executiveSummary;
+      
+      mappedAiReport.routeOverview = mappedAiReport.routeOverview || mappedAiReport.route_overview;
+      mappedAiReport.route_overview = mappedAiReport.routeOverview;
+      
+      mappedAiReport.geopoliticalAssessment = mappedAiReport.geopoliticalAssessment || mappedAiReport.geopolitical_assessment;
+      mappedAiReport.geopolitical_assessment = mappedAiReport.geopoliticalAssessment;
+      
+      mappedAiReport.weatherAssessment = mappedAiReport.weatherAssessment || mappedAiReport.weather_assessment;
+      mappedAiReport.weather_assessment = mappedAiReport.weatherAssessment;
+      
+      mappedAiReport.operationalImpact = mappedAiReport.operationalImpact || mappedAiReport.operational_impact;
+      mappedAiReport.operational_impact = mappedAiReport.operationalImpact;
+      
+      mappedAiReport.topThreats = mappedAiReport.topThreats || mappedAiReport.top_threats;
+      mappedAiReport.top_threats = mappedAiReport.topThreats;
+      
+      mappedAiReport.recommendedActions = mappedAiReport.recommendedActions || mappedAiReport.recommended_actions;
+      mappedAiReport.recommended_actions = mappedAiReport.recommendedActions;
+      
+      mappedAiReport.alternativeModeAnalysis = mappedAiReport.alternativeModeAnalysis || mappedAiReport.alternative_mode_analysis;
+      mappedAiReport.alternative_mode_analysis = mappedAiReport.alternativeModeAnalysis;
+      
+      mappedAiReport.operatorDecision = mappedAiReport.operatorDecision || mappedAiReport.operator_decision;
+      mappedAiReport.operator_decision = mappedAiReport.operatorDecision;
+
+      const restoredIntel = {
+        riskScore,
+        risk_score: riskScore,
+        safetyScore,
+        safety_score: safetyScore,
+        recommendedMode: replayingShipment.riskSummary || 'low-risk',
+        recommended_mode: replayingShipment.riskSummary || 'low-risk',
+        alertsCount: alerts.length,
+        alerts_count: alerts.length,
+        events: alerts,
+        riskZones: alerts.filter(a => a.location && Array.isArray(a.location)).map((event, idx) => {
+          const lat = event.location[0];
+          const lon = event.location[1];
+          const radiusKm = Math.round(100 + (event.intensity || 0.5) * 200);
+          const intensity = event.intensity || 0.5;
+          const sev = intensity >= 0.6 ? 'CRITICAL' : intensity >= 0.4 ? 'HIGH' : intensity >= 0.2 ? 'MODERATE' : 'LOW';
+          return {
+            id: event.id || `dyn-zone-${idx}-${Date.now()}`,
+            lat,
+            lon,
+            radiusKm,
+            name: event.zone || event.headline?.split(':')[0] || 'Active Risk Zone',
+            type: event.label || event.category || 'conflict',
+            baselineSeverity: sev,
+            severity: sev,
+            reason: event.headline || 'Active threat detected in this transit corridor.',
+            source_url: event.source_url || event.link || null,
+            image_url: event.image_url || null,
+            published_at: event.published_at || event.date || null,
+            publisher: event.publisher || null,
+            confidence: event.confidence || null,
+            intensity: event.intensity || null
+          };
+        }),
+        zoneIntersections: [],
+        waypointReports: waypoints,
+        summary: `Corridor risk evaluated as ${severity}.`,
+        severity: severity,
+        riskLevel: severity,
+        risk_level: severity,
+        aiReport: mappedAiReport,
+        ai_report: mappedAiReport
+      };
+
       const replayedRoute = {
         id: 0,
         type: 'Replayed Route',
@@ -614,7 +718,7 @@ export const RouteMap = ({
         distance: replayingShipment.distance,
         duration: replayingShipment.eta,
         summary: replayingShipment.mode === 'road' ? 'Road Route' : replayingShipment.mode === 'sea' ? 'Sea Route' : 'Air Route',
-        intelligence: { loading: true },
+        intelligence: restoredIntel,
         vehicle: replayingShipment.mode === 'road' ? 'truck' : replayingShipment.mode === 'sea' ? 'ship' : 'air'
       };
 
@@ -649,32 +753,7 @@ export const RouteMap = ({
 
       onRouteDataRef.current?.({ allRoutes: [replayedRoute], activeRouteIndex: 0 });
       setRouteError(null);
-
-      // Trigger fresh weather & GeoRisk intelligence fetch for the replayed route!
-      const fetchReplayedIntel = async () => {
-        try {
-          const intelRes = await axios.post(`${BASE_URL}/api/ai/risk/analyze`, {
-            origin: replayingShipment.origin,
-            destination: replayingShipment.destination,
-            mode: replayingShipment.mode === 'road' ? 'truck' : replayingShipment.mode === 'sea' ? 'ship' : 'air',
-            routeCoords: replayingShipment.routeGeometry.coordinates
-          });
-          if (intelRes.data.success) {
-            const updatedRoute = { ...replayedRoute, intelligence: intelRes.data.intelligence };
-            setAllRoutes([updatedRoute]);
-            onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
-            setShowRiskPanel(true);
-          }
-        } catch (intelErr) {
-          console.error('[RouteMap] Replay intel error:', intelErr.message);
-          const updatedRoute = { ...replayedRoute, intelligence: { error: true, summary: 'Risk intelligence temporarily unavailable.' } };
-          setAllRoutes([updatedRoute]);
-          onRouteDataRef.current?.({ allRoutes: [updatedRoute], activeRouteIndex: 0 });
-          setShowRiskPanel(true);
-        }
-      };
-
-      fetchReplayedIntel();
+      setShowRiskPanel(true);
       return;
     }
 

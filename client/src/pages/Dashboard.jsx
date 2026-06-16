@@ -55,6 +55,7 @@ const SEV_STYLES = {
 };
 
 // Unique, aesthetic, high-fidelity SVGs based on threat category
+// Unique, aesthetic, high-fidelity SVGs based on threat category
 export const getFallbackImage = (category) => {
   const cat = (category || '').toLowerCase().trim();
   
@@ -62,17 +63,23 @@ export const getFallbackImage = (category) => {
   
   const weatherSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2378350f"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g2)" opacity="0.6"/><path d="M170 120 A 25 25 0 0 1 210 90 A 35 35 0 0 1 260 120 A 25 25 0 0 1 240 150 L 165 150 A 20 20 0 0 1 170 120 Z" fill="none" stroke="%23f59e0b" stroke-width="3" stroke-linejoin="round"/><path d="M210 145 L195 175 L215 175 L200 205" fill="none" stroke="%23f59e0b" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/><text x="200" y="225" fill="%23fcd34d" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">WEATHER HAZARD WARNING</text></svg>`;
   
-  const piracySvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%231e3a8a"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g3)" opacity="0.6"/><circle cx="200" cy="110" r="45" fill="none" stroke="%233b82f6" stroke-width="3"/><path d="M200 65 V145 M170 115 H230 M175 145 C175 160 200 170 200 170 C200 170 225 160 225 145" fill="none" stroke="%233b82f6" stroke-width="3" stroke-linejoin="round"/><circle cx="200" cy="95" r="8" fill="%233b82f6"/><text x="200" y="210" fill="%2393c5fd" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">MARITIME SECURITY ALERT</text></svg>`;
+  const piracySvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%231e3a8a"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g3)" opacity="0.6"/><circle cx="200" cy="110" r="50" fill="%232563eb" opacity="0.1"/><path d="M160 75 L240 155 M240 75 L160 155" stroke="%232563eb" stroke-width="3" stroke-linecap="round"/><circle cx="200" cy="115" r="25" fill="%23111827" stroke="%232563eb" stroke-width="3"/><path d="M190 115 L200 100 L210 115 Z" fill="%232563eb"/><text x="200" y="210" fill="%2393c5fd" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">PIRACY &amp; HIJACK ALERT</text></svg>`;
   
   const sanctionsSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23581c87"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g4)" opacity="0.6"/><rect x="150" y="90" width="100" height="70" rx="6" fill="none" stroke="%23a855f7" stroke-width="3"/><path d="M175 90 V75 C175 60 225 60 225 75 V90" fill="none" stroke="%23a855f7" stroke-width="3"/><circle cx="200" cy="125" r="7" fill="%23a855f7"/><path d="M200 132 V145" stroke="%23a855f7" stroke-width="3"/><text x="200" y="210" fill="%23d8b4fe" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">TRADE SANCTIONS WARNING</text></svg>`;
   
+  const maritimeSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g_maritime" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%230f766e"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g_maritime)" opacity="0.6"/><path d="M140 120 L150 145 H250 L260 120 Z" fill="none" stroke="%2314b8a6" stroke-width="3" stroke-linejoin="round"/><path d="M165 120 V100 H235 V120" fill="none" stroke="%2314b8a6" stroke-width="3" stroke-linejoin="round"/><path d="M130 155 C160 165 240 165 270 155" fill="none" stroke="%2314b8a6" stroke-width="2" stroke-linecap="round"/><text x="200" y="210" fill="%2399f6e4" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">MARITIME SECURITY ALERT</text></svg>`;
+
+  const airspaceSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g_airspace" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23312e81"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g_airspace)" opacity="0.6"/><circle cx="200" cy="110" r="50" fill="%236366f1" opacity="0.1"/><path d="M200 65 L215 105 H255 L220 125 L235 165 L200 145 L165 165 L180 125 L145 105 H185 Z" fill="none" stroke="%236366f1" stroke-width="3" stroke-linejoin="round"/><circle cx="200" cy="115" r="45" fill="none" stroke="%23ef4444" stroke-width="2" stroke-dasharray="6,6"/><text x="200" y="210" fill="%23c7d2fe" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">AIRSPACE HAZARD REPORT</text></svg>`;
+
   const defaultSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="100%" height="100%"><rect width="400" height="250" fill="%23111827"/><defs><linearGradient id="g5" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23064e3b"/><stop offset="100%" stop-color="%23111827"/></linearGradient></defs><rect width="400" height="250" fill="url(%23g5)" opacity="0.6"/><path d="M150 140 H250 L260 115 H140 Z" fill="none" stroke="%2310b981" stroke-width="3" stroke-linejoin="round"/><rect x="160" y="90" width="80" height="25" fill="none" stroke="%2310b981" stroke-width="3"/><circle cx="175" cy="155" r="8" fill="%2310b981"/><circle cx="225" cy="155" r="8" fill="%2310b981"/><text x="200" y="210" fill="%23a7f3d0" font-family="system-ui" font-size="12" font-weight="900" text-anchor="middle" letter-spacing="2">ROUTE TRANSIT ADVISORY</text></svg>`;
 
   const c = cat.toLowerCase();
-  if (c.includes('conflict') || c.includes('protest') || c.includes('terrorism') || c.includes('dispute')) return conflictSvg;
-  if (c.includes('weather') || c.includes('storm') || c.includes('disaster')) return weatherSvg;
-  if (c.includes('piracy') || c.includes('maritime') || c.includes('sea')) return piracySvg;
-  if (c.includes('sanctions') || c.includes('border') || c.includes('port') || c.includes('restriction') || c.includes('closure')) return sanctionsSvg;
+  if (c.includes('conflict') || c.includes('protest') || c.includes('terrorism') || c.includes('dispute') || c.includes('war') || c.includes('violence')) return conflictSvg;
+  if (c.includes('weather') || c.includes('storm') || c.includes('disaster') || c.includes('typhoon') || c.includes('blizzard') || c.includes('hurricane') || c.includes('rain') || c.includes('wind') || c.includes('flood')) return weatherSvg;
+  if (c.includes('piracy') || c.includes('hijack') || c.includes('hostage') || c.includes('pirate')) return piracySvg;
+  if (c.includes('sanctions') || c.includes('embargo') || c.includes('restriction') || c.includes('border') || c.includes('closure') || c.includes('customs')) return sanctionsSvg;
+  if (c.includes('maritime') || c.includes('port') || c.includes('vessel') || c.includes('ship') || c.includes('ocean') || c.includes('sea') || c.includes('collision') || c.includes('breakdown')) return maritimeSvg;
+  if (c.includes('airspace') || c.includes('aviation') || c.includes('flight') || c.includes('plane') || c.includes('drone') || c.includes('sky') || c.includes('air') || c.includes('jamming')) return airspaceSvg;
   
   return defaultSvg;
 };
@@ -600,54 +607,62 @@ const Dashboard = () => {
   }, []);
 
   // Load a saved route from My Routes
-  const handleLoadSavedRoute = useCallback((r) => {
-    const coords = r.routeGeometry?.coordinates || [];
-    if (coords.length >= 2) {
-      const originCoords = coords[0];
-      const destCoords = coords[coords.length - 1];
-      
-      const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
-      const nextMode = modeMap[r.mode] || 'ship';
+  const handleLoadSavedRoute = useCallback(async (r) => {
+    try {
+      const res = await axios.get(`/api/ai/shipment/${r.id}`);
+      if (res.data?.success) {
+        const fullShipment = res.data.shipment;
+        const coords = fullShipment.routeGeometry?.coordinates || [];
+        if (coords.length >= 2) {
+          const originCoords = coords[0];
+          const destCoords = coords[coords.length - 1];
+          
+          const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
+          const nextMode = modeMap[fullShipment.mode] || 'ship';
 
-      setSelectedSource({
-        lat: originCoords[1],
-        lon: originCoords[0],
-        display_name: r.origin
-      });
-      setSelectedDest({
-        lat: destCoords[1],
-        lon: destCoords[0],
-        display_name: r.destination
-      });
+          setSelectedSource({
+            lat: originCoords[1],
+            lon: originCoords[0],
+            display_name: fullShipment.origin
+          });
+          setSelectedDest({
+            lat: destCoords[1],
+            lon: destCoords[0],
+            display_name: fullShipment.destination
+          });
 
-      // Instantly put into loading state and clear stale stats
-      setAllRoutes([{
-        id: 0,
-        geometry: r.routeGeometry,
-        coords: coords.map(c => [c[1], c[0]]),
-        distance: r.distance,
-        duration: r.eta,
-        summary: r.mode === 'road' ? 'Road Route' : r.mode === 'sea' ? 'Sea Route' : 'Air Route',
-        intelligence: { loading: true },
-        vehicle: r.mode === 'road' ? 'truck' : r.mode === 'sea' ? 'ship' : 'air'
-      }]);
-      setActiveRouteIndex(0);
+          // Instantly put into loading state and clear stale stats
+          setAllRoutes([{
+            id: 0,
+            geometry: fullShipment.routeGeometry,
+            coords: coords.map(c => [c[1], c[0]]),
+            distance: fullShipment.distance,
+            duration: fullShipment.eta,
+            summary: fullShipment.mode === 'road' ? 'Road Route' : fullShipment.mode === 'sea' ? 'Sea Route' : 'Air Route',
+            intelligence: { loading: true },
+            vehicle: fullShipment.mode === 'road' ? 'truck' : fullShipment.mode === 'sea' ? 'ship' : 'air'
+          }]);
+          setActiveRouteIndex(0);
 
-      setOriginalAnalysis(r);
-      setReplayingShipment(r);
-      handleModeChange(nextMode, true);
-      setIsMissionControlOpen(false);
-    } else if (r.source && r.dest) {
-      const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
-      const nextMode = modeMap[r.mode] || 'ship';
+          setOriginalAnalysis(fullShipment);
+          setReplayingShipment(fullShipment);
+          handleModeChange(nextMode, true);
+          setIsMissionControlOpen(false);
+        } else if (fullShipment.source && fullShipment.dest) {
+          const modeMap = { sea: 'ship', air: 'air', truck: 'truck', road: 'truck' };
+          const nextMode = modeMap[fullShipment.mode] || 'ship';
 
-      setSelectedSource(r.source);
-      setSelectedDest(r.dest);
+          setSelectedSource(fullShipment.source);
+          setSelectedDest(fullShipment.dest);
 
-      setOriginalAnalysis(r);
-      setReplayingShipment(r);
-      handleModeChange(nextMode, true);
-      setIsMissionControlOpen(false);
+          setOriginalAnalysis(fullShipment);
+          setReplayingShipment(fullShipment);
+          handleModeChange(nextMode, true);
+          setIsMissionControlOpen(false);
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error loading saved route details:', err.message);
     }
   }, [handleModeChange]);
 
@@ -955,14 +970,16 @@ const Dashboard = () => {
                     )}
 
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-                      {intel.waypointReports.map((wp, i) => {
+                      {(showFullWeather ? intel.waypointReports : sampledWeatherReports).map((wp, i) => {
                         const WIcon = getWeatherIcon(wp.weather);
                         const parts = (wp.weather || 'Clear • 25°C').split(' • ');
+                        const listToUse = showFullWeather ? intel.waypointReports : sampledWeatherReports;
+                        const labelText = i === 0 ? 'Origin' : i === listToUse.length - 1 ? 'Destination' : `Checkpoint ${String.fromCharCode(65 + (i - 1))}`;
                         
                         return (
                           <div key={i} className="flex-shrink-0 w-[114px] bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 flex flex-col items-center text-center">
                             <span className="text-[8px] font-black uppercase tracking-wider text-cyan-400 mb-1">
-                              {i === 0 ? 'Origin' : i === intel.waypointReports.length - 1 ? 'Destination' : `Transit ${i}`}
+                              {labelText}
                             </span>
                             <WIcon size={18} style={{ color: wp.severity === 'CRITICAL' ? '#EF4444' : wp.severity === 'CAUTION' ? '#F59E0B' : '#00C2FF' }} className="my-1.5" />
                             <p className="text-[10px] font-bold text-white truncate w-full">{wp.place?.split(',')[0]}</p>

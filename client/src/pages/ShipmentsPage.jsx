@@ -192,26 +192,35 @@ const ShipmentsPage = () => {
     fetchShipments();
   }, [fetchShipments]);
 
-  const handleOpenRoute = useCallback((r) => {
-    // Store selected route in sessionStorage so Dashboard can pick it up
-    sessionStorage.setItem('pendingRoute', JSON.stringify({
-      origin: r.origin,
-      destination: r.destination,
-      mode: r.mode === 'truck' ? 'road' : r.mode === 'ship' ? 'sea' : 'air',
-      distance: r.distance,
-      eta: r.eta,
-      riskScore: r.riskScore,
-      safetyScore: r.safetyScore,
-      routeGeometry: r.routeGeometry,
-      cargo: r.cargo,
-      priority: r.priority,
-      date: r.date,
-      time: r.time,
-      weatherSummary: r.weatherSummary,
-      riskSummary: r.riskSummary,
-      aiReport: r.aiReport
-    }));
-    navigate('/dashboard');
+  const handleOpenRoute = useCallback(async (r) => {
+    try {
+      const res = await axios.get(`/api/ai/shipment/${r.id}`);
+      if (res.data?.success) {
+        const fullShipment = res.data.shipment;
+        sessionStorage.setItem('pendingRoute', JSON.stringify({
+          origin: fullShipment.origin,
+          destination: fullShipment.destination,
+          mode: fullShipment.mode === 'truck' ? 'road' : fullShipment.mode === 'ship' ? 'sea' : 'air',
+          distance: fullShipment.distance,
+          eta: fullShipment.eta,
+          riskScore: fullShipment.riskScore,
+          safetyScore: fullShipment.safetyScore,
+          routeGeometry: fullShipment.routeGeometry,
+          cargo: fullShipment.cargo,
+          priority: fullShipment.priority,
+          date: fullShipment.date,
+          time: fullShipment.time,
+          weatherSummary: fullShipment.weatherSummary,
+          riskSummary: fullShipment.riskSummary,
+          aiReport: fullShipment.aiReport,
+          newsAlerts: fullShipment.newsAlerts,
+          waypointReports: fullShipment.waypointReports
+        }));
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      console.error('[ShipmentsPage] Error fetching full shipment details:', err.message);
+    }
   }, [navigate]);
 
   const sortedAndFiltered = useMemo(() => {
