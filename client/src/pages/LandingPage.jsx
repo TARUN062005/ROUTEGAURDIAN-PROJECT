@@ -290,7 +290,7 @@ const LandingPage = () => {
       </section>
 
       {/* 4. FOUR CORE INTEL PILLARS */}
-      <section id="features" className="py-20 px-6 border-t border-slate-900 bg-[#050A15] relative z-10">
+      <section id="features" className="py-20 px-6 border-t border-slate-900 bg-[#030712] relative z-10">
         <div className="max-w-7xl mx-auto space-y-12">
           
           {/* Section Heading */}
@@ -298,7 +298,7 @@ const LandingPage = () => {
             <h2 className="text-3xl font-black tracking-tight text-white uppercase text-center">
               Core Security Pillars
             </h2>
-            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed text-center">
+            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed text-center font-medium">
               A comprehensive risk model built for enterprise fleet assurance. We evaluate all transit parameters offline and online.
             </p>
           </div>
@@ -307,7 +307,7 @@ const LandingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             
             {/* Pillar 1 */}
-            <div className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-6 hover:border-cyan-500/20 hover:shadow-xl hover:shadow-cyan-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
+            <div className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-6 hover:border-cyan-500/20 hover:shadow-xl hover:shadow-cyan-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
               <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20 text-cyan-400">
                 <Globe size={18} />
               </div>
@@ -320,7 +320,7 @@ const LandingPage = () => {
             </div>
 
             {/* Pillar 2 */}
-            <div className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-6 hover:border-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
+            <div className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-6 hover:border-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-400">
                 <Cpu size={18} />
               </div>
@@ -333,7 +333,7 @@ const LandingPage = () => {
             </div>
 
             {/* Pillar 3 */}
-            <div className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-6 hover:border-amber-500/20 hover:shadow-xl hover:shadow-amber-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
+            <div className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-6 hover:border-amber-500/20 hover:shadow-xl hover:shadow-amber-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500">
                 <Compass size={18} />
               </div>
@@ -346,7 +346,7 @@ const LandingPage = () => {
             </div>
 
             {/* Pillar 4 */}
-            <div className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-6 hover:border-purple-500/20 hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
+            <div className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-6 hover:border-purple-500/20 hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300 flex flex-col justify-between text-left h-60">
               <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20 text-purple-400">
                 <Layers size={18} />
               </div>
@@ -385,7 +385,7 @@ const LandingPage = () => {
           {fetchingIncidents ? (
             <div className="grid md:grid-cols-3 gap-6">
               {[0, 1, 2].map(i => (
-                <div key={i} className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-5 h-40 animate-pulse space-y-4">
+                <div key={i} className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-5 h-40 animate-pulse space-y-4">
                   <div className="w-20 h-4 bg-slate-800/60 rounded" />
                   <div className="w-full h-8 bg-slate-800/60 rounded" />
                   <div className="w-1/2 h-4 bg-slate-800/60 rounded" />
@@ -400,7 +400,7 @@ const LandingPage = () => {
                 const severityColor = isCritical ? 'text-red-400 bg-red-500/10 border-red-500/25' : isHigh ? 'text-orange-400 bg-orange-500/10 border-orange-500/25' : 'text-yellow-400 bg-yellow-500/10 border-yellow-500/25';
                 
                 return (
-                  <div key={i} className="bg-[#101826]/60 border border-slate-850 rounded-2xl p-5 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between text-left space-y-4">
+                  <div key={i} className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-5 hover:border-slate-800 transition-all duration-300 flex flex-col justify-between text-left space-y-4">
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className={`px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${severityColor}`}>
@@ -425,7 +425,7 @@ const LandingPage = () => {
               })}
             </div>
           ) : (
-            <div className="bg-[#101826]/40 border border-slate-850 rounded-2xl p-8 text-center text-slate-500 font-semibold text-xs tracking-wider uppercase">
+            <div className="bg-slate-950/40 border border-slate-900/60 rounded-2xl p-8 text-center text-slate-500 font-semibold text-xs tracking-wider uppercase">
               No active tactical incidents reported. Threat stream clear.
             </div>
           )}
@@ -433,7 +433,7 @@ const LandingPage = () => {
       </section>
 
       {/* 6. PLATFORM CTA CARD */}
-      <section className="py-20 px-6 border-t border-slate-900 text-center bg-[#050A15] relative z-10">
+      <section className="py-20 px-6 border-t border-slate-900 text-center bg-[#030712] relative z-10">
         <div className="max-w-xl mx-auto space-y-6">
           <h2 className="text-3xl font-black tracking-tight text-white uppercase">Secure Your Shipping Vectors</h2>
           <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-medium">
@@ -446,6 +446,22 @@ const LandingPage = () => {
           </div>
         </div>
       </section>
+
+      {/* 7. BRAND FOOTER */}
+      <footer className="border-t border-slate-900 bg-[#03060E] py-10 px-6 text-center text-slate-500 text-xs">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <Shield size={16} className="text-cyan-400" />
+            <span className="font-black uppercase tracking-wider text-slate-400">RouteGuardian</span>
+          </div>
+          <p className="font-medium">© {new Date().getFullYear()} RouteGuardian. Enterprise Route Risk Auditing Platform. All rights reserved.</p>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default LandingPage;
 
       {/* 7. BRAND FOOTER */}
       <footer className="border-t border-slate-900 bg-[#03060E] py-10 px-6 text-center text-slate-500 text-xs">

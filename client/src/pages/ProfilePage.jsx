@@ -107,41 +107,41 @@ const ProfilePage = () => {
       className="max-w-3xl mx-auto space-y-8 pb-32 text-slate-100 font-sans"
     >
       {/* 1. PROFILE HEADER CARD */}
-      <div className="bg-[#101826]/80 border border-slate-800/80 backdrop-blur-xl rounded-[24px] p-8 relative overflow-hidden shadow-2xl flex flex-col md:flex-row items-center md:items-start gap-8">
+      <div className="bg-[#101826]/85 border border-slate-800/60 backdrop-blur-2xl rounded-[32px] p-10 relative overflow-hidden shadow-2xl flex flex-col items-center text-center gap-6">
         {/* Glow vector effect */}
-        <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 blur-[80px] pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-500/5 blur-[90px] pointer-events-none" />
         
         {/* Avatar Area */}
-        <div className="relative flex-shrink-0 group">
-          <div className="h-28 w-28 rounded-full overflow-hidden border-2 border-cyan-500/30 bg-slate-950 flex items-center justify-center shadow-lg transition-transform group-hover:scale-[1.02] duration-300">
+        <div className="relative group">
+          <div className="h-32 w-32 rounded-full overflow-hidden border-4 border-slate-800/80 bg-slate-950 flex items-center justify-center shadow-xl transition-all group-hover:scale-[1.03] duration-300">
             {displayUser?.profileImage ? (
               <img src={displayUser.profileImage} alt="Profile" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-3xl font-black text-cyan-400">
+              <span className="text-4xl font-black text-cyan-400">
                 {displayUser?.name?.charAt(0) || 'U'}
               </span>
             )}
           </div>
-          <div className={`absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-[#101826] shadow-md ${displayUser?.isActive !== false ? 'bg-green-500' : 'bg-slate-400'}`} />
+          <div className={`absolute bottom-2 right-2 h-5 w-5 rounded-full border-4 border-[#101826] shadow-lg ${displayUser?.isActive !== false ? 'bg-green-500' : 'bg-slate-400'}`} />
         </div>
 
         {/* User Identity Details */}
-        <div className="flex-1 text-center md:text-left space-y-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/20 text-cyan-400 text-[9px] font-black uppercase tracking-wider">
+        <div className="space-y-4 w-full">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/40 border border-cyan-500/20 text-cyan-400 text-[10px] font-black uppercase tracking-wider">
               <Shield size={10} /> Secure Identity Module
             </div>
-            <h2 className="text-2xl font-black text-white tracking-tight">
+            <h2 className="text-3xl font-black text-white tracking-tight">
               {displayUser?.name || 'Operative'}
             </h2>
-            <p className="text-xs text-slate-400 font-semibold flex items-center justify-center md:justify-start gap-1">
-              <Mail size={12} className="text-slate-500" /> {displayUser?.email}
+            <p className="text-xs text-slate-400 font-semibold flex items-center justify-center gap-1.5">
+              <Mail size={13} className="text-slate-500" /> {displayUser?.email}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs text-slate-400 pt-1 border-t border-slate-800/40">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400 pt-3 border-t border-slate-800/40 max-w-md mx-auto">
             <div className="flex items-center gap-1.5 font-medium">
-              <Clock size={13} className="text-slate-500" />
+              <Calendar size={13} className="text-slate-500" />
               <span>Joined: <b>{joinedDate}</b></span>
             </div>
             <div className="flex items-center gap-1.5 font-medium">
@@ -152,13 +152,15 @@ const ProfilePage = () => {
         </div>
 
         {/* Edit Button */}
-        <button
-          onClick={() => navigate('/settings?tab=profile')}
-          className="flex-shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-cyan-500/30 hover:bg-[#101826] rounded-xl text-xs font-bold uppercase tracking-wider text-white transition-all shadow-md active:scale-95 cursor-pointer"
-        >
-          <Edit3 size={14} className="text-cyan-400" />
-          <span>Edit Profile</span>
-        </button>
+        <div className="pt-2">
+          <button
+            onClick={() => navigate('/settings?tab=profile')}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 hover:border-cyan-500/40 hover:bg-[#101826] rounded-2xl text-xs font-bold uppercase tracking-wider text-white transition-all shadow-md active:scale-95 cursor-pointer"
+          >
+            <Edit3 size={14} className="text-cyan-400" />
+            <span>Modify Clearance Settings</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. ACCOUNT OVERVIEW CARD */}
