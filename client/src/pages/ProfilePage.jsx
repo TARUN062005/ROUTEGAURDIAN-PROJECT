@@ -104,7 +104,7 @@ const ProfilePage = () => {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="max-w-3xl mx-auto space-y-8 pb-32 text-slate-100 font-sans"
+      className="max-w-5xl mx-auto space-y-8 pb-32 text-slate-100 font-sans"
     >
       {/* 1. PROFILE HEADER CARD */}
       <div className="bg-[#101826]/85 border border-slate-800/60 backdrop-blur-2xl rounded-[32px] p-10 relative overflow-hidden shadow-2xl flex flex-col items-center text-center gap-6">

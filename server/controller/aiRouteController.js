@@ -966,7 +966,7 @@ const getWeatherAlongRoute = async (coords, mode) => {
     }
 
     // Map into final weather checkpoint structure
-    return checkpoints.map((p, i) => {
+    const rawReports = checkpoints.map((p, i) => {
       const current = weatherData[i]?.current_weather || { temperature: 25, windspeed: 5, weathercode: 0 };
       const details = getWeatherDetails(current.weathercode);
       return {
@@ -985,10 +985,88 @@ const getWeatherAlongRoute = async (coords, mode) => {
       };
     });
 
+    return deduplicateWeatherReports(rawReports, mode);
+
   } catch (error) {
     console.error('[getWeatherAlongRoute] Global failed:', error.message);
     return [];
   }
+};
+
+const deduplicateWeatherReports = (reports, mode) => {
+  if (!reports || reports.length === 0) return [];
+
+  const collapsed = [];
+  
+  for (let i = 0; i < reports.length; i++) {
+    const r = reports[i];
+    
+    // Always keep origin and destination
+    if (i === 0 || i === reports.length - 1) {
+      collapsed.push(r);
+      continue;
+    }
+
+    const prev = collapsed[collapsed.length - 1];
+    
+    // Calculate distance using our hDistKm function
+    const dist = hDistKm([prev.coords[1], prev.coords[0]], [r.coords[1], r.coords[0]]);
+    
+    const cleanName = name => (name || '').toLowerCase()
+      .replace(/\b(near|seaport|airport|transit|sector|port|corridor)\b/g, '')
+      .replace(/[^a-z0-9]/g, '')
+      .trim();
+
+    const nameMatch = cleanName(prev.place) === cleanName(r.place) && cleanName(r.place) !== '';
+    const tooClose = dist < 25; // 25km buffer
+
+    if (nameMatch || tooClose) {
+      // Merge: keep the more severe report
+      const severityScores = { STABLE: 0, LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4 };
+      const prevSev = severityScores[prev.severity] || 0;
+      const currSev = severityScores[r.severity] || 0;
+      
+      if (currSev > prevSev) {
+        collapsed[collapsed.length - 1] = {
+          ...r,
+          id: prev.id // retain original id/sequence
+        };
+      }
+    } else {
+      collapsed.push(r);
+    }
+  }
+
+  // Ensure last element is destination
+  if (reports.length > 1 && collapsed[collapsed.length - 1] !== reports[reports.length - 1]) {
+    collapsed[collapsed.length - 1] = reports[reports.length - 1];
+  }
+
+  // Downsample intermediate transit checkpoints to max 10 total points:
+  // Layout: Origin, 8 Transits, Destination
+  if (collapsed.length > 10) {
+    const origin = collapsed[0];
+    const destination = collapsed[collapsed.length - 1];
+    const intermediates = collapsed.slice(1, collapsed.length - 1);
+    
+    const targetCount = 8;
+    const sampled = [];
+    for (let i = 0; i < targetCount; i++) {
+      const idx = Math.floor((i / (targetCount - 1)) * (intermediates.length - 1));
+      sampled.push(intermediates[idx]);
+    }
+    
+    const finalReports = [origin, ...sampled, destination];
+    return finalReports.map((wp, idx) => ({
+      ...wp,
+      id: `W${idx}`
+    }));
+  }
+
+  return collapsed.map((wp, idx) => ({
+    ...wp,
+    id: `W${idx}`
+  }));
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1992,6 +2070,20 @@ exports.getWeather = async (req, res) => {
     res.json({ success: true, weather: wRes.data.current_weather });
   } catch (error) {
     res.status(500).json({ error: "Atmospheric Telemetry Offline." });
+  }
+};
+
+exports.getWeatherCorridor = async (req, res) => {
+  try {
+    const { routeCoords, mode } = req.body;
+    if (!routeCoords || !Array.isArray(routeCoords)) {
+      return res.status(400).json({ success: false, error: 'Invalid parameters: routeCoords must be an array of coordinates' });
+    }
+    const weatherReports = await getWeatherAlongRoute(routeCoords, mode || 'road');
+    res.json({ success: true, weather: weatherReports });
+  } catch (error) {
+    console.error('getWeatherCorridor error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to retrieve weather corridor' });
   }
 };
 

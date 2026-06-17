@@ -557,26 +557,66 @@ export const RouteMap = ({
         onRouteDataRef.current?.({ allRoutes: processed, activeRouteIndex: 0 });
         setRouteError(null);
 
-        // Fetch intelligence in parallel for all routes
+        // Fetch intelligence in parallel for all routes with automatic retries when engine is warming up
         processed.forEach(async (route) => {
-          try {
-            const intelRes = await axios.post(`${BASE_URL}/api/ai/risk/analyze`, {
-              origin: start.display_name,
-              destination: end.display_name,
-              mode: freightMode,
-              routeCoords: route.geometry.coordinates
-            });
-            if (intelRes.data.success) {
-              setAllRoutes(curr => {
-                const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: intelRes.data.intelligence } : cr);
-                onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
-                return updated;
+          const maxRetries = 5;
+          let success = false;
+          let attempt = 0;
+          let lastError = null;
+
+          const getStatusText = (att) => {
+            if (att === 1) return "Waking Risk Intelligence Engine";
+            if (att === 2) return "Synchronizing Threat Intelligence";
+            return "Analyzing Route Corridor";
+          };
+
+          while (attempt < maxRetries && !success) {
+            attempt++;
+            const statusText = getStatusText(attempt);
+            console.log(`[RouteMap] Fetching risk intelligence: attempt ${attempt}/${maxRetries} - ${statusText}`);
+
+            // Update loading status in the routes array
+            setAllRoutes(curr => curr.map(cr => cr.id === route.id ? {
+              ...cr,
+              intelligence: { loading: true, statusText }
+            } : cr));
+
+            try {
+              const intelRes = await axios.post(`${BASE_URL}/api/ai/risk/analyze`, {
+                origin: start.display_name,
+                destination: end.display_name,
+                mode: freightMode,
+                routeCoords: route.geometry.coordinates
               });
+
+              if (intelRes.data && intelRes.data.success) {
+                success = true;
+                setAllRoutes(curr => {
+                  const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: intelRes.data.intelligence } : cr);
+                  onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
+                  return updated;
+                });
+                break;
+              }
+            } catch (err) {
+              lastError = err;
+              console.warn(`[RouteMap] Risk engine request failed (attempt ${attempt}/${maxRetries}):`, err.message);
+              if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 3500));
+              }
             }
-          } catch (intelErr) {
-            console.error('[RouteMap] Intel fetch error:', intelErr.message);
+          }
+
+          if (!success) {
+            console.error('[RouteMap] All risk intelligence fetch retries exhausted. Developer logs trace:', lastError?.message);
             setAllRoutes(curr => {
-              const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: { error: true, summary: 'Risk intelligence temporarily unavailable.' } } : cr);
+              const updated = curr.map(cr => cr.id === route.id ? {
+                ...cr,
+                intelligence: {
+                  error: true,
+                  summary: 'Risk intelligence temporarily unavailable.'
+                }
+              } : cr);
               onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
               return updated;
             });

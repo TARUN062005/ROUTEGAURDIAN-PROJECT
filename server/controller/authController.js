@@ -72,11 +72,11 @@ function getPrimaryClientUrl() {
 
 function accessCookieOptions(req) {
   const host = req ? (req.headers.host || '') : '';
-  const isProduction = process.env.NODE_ENV === 'production' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'));
+  const isSecure = req ? (req.secure || req.headers['x-forwarded-proto'] === 'https' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'))) : false;
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    secure: isSecure,
+    sameSite: isSecure ? 'none' : 'lax',
     maxAge: 15 * 60 * 1000, // 15 minutes
     path: '/',
   };
@@ -84,11 +84,11 @@ function accessCookieOptions(req) {
 
 function refreshCookieOptions(req) {
   const host = req ? (req.headers.host || '') : '';
-  const isProduction = process.env.NODE_ENV === 'production' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'));
+  const isSecure = req ? (req.secure || req.headers['x-forwarded-proto'] === 'https' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'))) : false;
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    secure: isSecure,
+    sameSite: isSecure ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
   };
@@ -96,11 +96,11 @@ function refreshCookieOptions(req) {
 
 function csrfCookieOptions(req) {
   const host = req ? (req.headers.host || '') : '';
-  const isProduction = process.env.NODE_ENV === 'production' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'));
+  const isSecure = req ? (req.secure || req.headers['x-forwarded-proto'] === 'https' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'))) : false;
   return {
     httpOnly: false, // Must be accessible to client-side JS
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    secure: isSecure,
+    sameSite: isSecure ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
   };

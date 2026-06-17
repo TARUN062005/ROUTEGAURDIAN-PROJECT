@@ -306,17 +306,51 @@ export const ShipmentCreationFlow = ({
     const trimmed = query.trim().toLowerCase();
     const key = `${modeKey}:${trimmed}`;
     
-    // Minimum 3 characters
-    if (trimmed.length < 3) { 
+    // Minimum 2 characters
+    if (trimmed.length < 2) { 
       setSlot(which, { results: [] }); 
       return; 
     }
     
+    // 1. Direct hit in local cache
     if (searchCache.has(key)) { 
       const data = searchCache.get(key);
       setSlot(which, { results: data }); 
-      console.log(`[SEARCH]\nquery=${query}\nresults=${data.map(r => r.display_name).join(' | ')}`);
+      console.log(`[SEARCH - CACHE DIRECT HIT] query=${query}`);
       return; 
+    }
+
+    // 2. Prefix search index local lookup (fuzzy search matching on similar prefixes in cache)
+    let localMatches = [];
+    for (const [cacheKey, cacheData] of searchCache.entries()) {
+      if (cacheKey.startsWith(`${modeKey}:`)) {
+        const cachedPrefix = cacheKey.split(':')[1];
+        if (trimmed.startsWith(cachedPrefix) || cachedPrefix.startsWith(trimmed)) {
+          const matches = cacheData.filter(item => 
+            item.display_name.toLowerCase().includes(trimmed)
+          );
+          localMatches = [...localMatches, ...matches];
+        }
+      }
+    }
+
+    if (localMatches.length > 0) {
+      const seen = new Set();
+      const uniqueMatches = [];
+      for (const item of localMatches) {
+        const ident = `${item.lat}-${item.lon || item.lng}`;
+        if (!seen.has(ident)) {
+          seen.add(ident);
+          uniqueMatches.push(item);
+        }
+      }
+      
+      const filtered = filterResultsByMode(uniqueMatches);
+      if (filtered.length >= 3) {
+        console.log(`[SEARCH - CACHE PREFIX HIT] query=${query} matched ${filtered.length} local items`);
+        setSlot(which, { results: filtered.slice(0, 6) });
+        return;
+      }
     }
 
     // Cancel previous search for this input slot
@@ -335,11 +369,11 @@ export const ShipmentCreationFlow = ({
       const data = filterResultsByMode(res.data || []);
       if (data.length > 0) searchCache.set(key, data);
       
-      console.log(`[SEARCH]\nquery=${query}\nresults=${data.map(r => r.display_name).join(' | ')}`);
+      console.log(`[SEARCH - NETWORK FETCH] query=${query}`);
 
       setSlot(which, { results: data, searching: false });
     } catch (err) {
-      if (axios.isCancel(err)) {
+      if (axios.isCancel(err) || err.name === 'CanceledError') {
         return; // ignore cancelled request
       }
       setSlot(which, { results: [], searching: false });
@@ -349,16 +383,16 @@ export const ShipmentCreationFlow = ({
   useEffect(() => {
     const slot = src;
     if (activeDropdown !== 'source' || slot.selected || slot.slotState?.status === 'picking') return;
-    // 250ms debounce
-    const t = setTimeout(() => fetchLocations(slot.query, 'source'), 250);
+    // 200ms debounce
+    const t = setTimeout(() => fetchLocations(slot.query, 'source'), 200);
     return () => clearTimeout(t);
   }, [src.query, activeDropdown, src.selected, src.slotState]);
 
   useEffect(() => {
     const slot = dst;
     if (activeDropdown !== 'dest' || slot.selected || slot.slotState?.status === 'picking') return;
-    // 250ms debounce
-    const t = setTimeout(() => fetchLocations(slot.query, 'dest'), 250);
+    // 200ms debounce
+    const t = setTimeout(() => fetchLocations(slot.query, 'dest'), 200);
     return () => clearTimeout(t);
   }, [dst.query, activeDropdown, dst.selected, dst.slotState]);
 

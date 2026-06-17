@@ -453,18 +453,123 @@ const Dashboard = () => {
     return () => window.removeEventListener("toggleNewRoute", handleToggle);
   }, []);
 
-  // Automatically save new successful routes
+  // ── Offline Synchronization Queue for Shipment Creation ──
+  const syncPendingShipments = useCallback(async () => {
+    if (syncPendingShipments.running) return;
+    syncPendingShipments.running = true;
+
+    try {
+      const pendingQueue = JSON.parse(localStorage.getItem('rg_pending_shipments') || '[]');
+      if (pendingQueue.length === 0) {
+        syncPendingShipments.running = false;
+        return;
+      }
+
+      console.log(`[Dashboard] Attempting to sync ${pendingQueue.length} locally queued shipments...`);
+      let updatedQueue = [...pendingQueue];
+      let didSyncAny = false;
+
+      for (const item of pendingQueue) {
+        let success = false;
+        let retries = 3;
+        
+        while (retries > 0 && !success) {
+          try {
+            const res = await axios.post('/api/ai/shipment', item.payload);
+            if (res.data && res.data.success) {
+              success = true;
+              didSyncAny = true;
+              updatedQueue = updatedQueue.filter(q => q.tempId !== item.tempId);
+              toast.success(`Shipment from ${item.payload.origin.split(',')[0]} to ${item.payload.destination.split(',')[0]} securely synchronized with cloud control.`);
+            }
+          } catch (err) {
+            retries--;
+            console.warn(`[Dashboard] Sync attempt failed for shipment ${item.tempId}. Retries remaining: ${retries}. Error:`, err.message);
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+          }
+        }
+
+        if (!success) {
+          break; // Stop loop if server continues to fail (offline or server error)
+        }
+      }
+
+      localStorage.setItem('rg_pending_shipments', JSON.stringify(updatedQueue));
+
+      if (didSyncAny) {
+        try {
+          const res = await axios.get('/api/ai/shipments');
+          if (res.data?.success) {
+            setSavedRoutes(res.data.shipments.map(s => ({
+              id: s.id,
+              origin: s.origin,
+              destination: s.destination,
+              mode: s.mode === 'road' ? 'truck' : s.mode === 'sea' ? 'ship' : 'air',
+              distance: s.distance,
+              eta: s.eta,
+              riskScore: s.riskScore,
+              safetyScore: s.safetyScore,
+              routeGeometry: s.routeGeometry,
+              timestamp: new Date(s.createdAt).getTime(),
+              severity: getRiskLevel(s.riskScore),
+              cargo: s.cargo,
+              priority: s.priority,
+              date: s.date,
+              time: s.time,
+              weatherSummary: s.weatherSummary,
+              riskSummary: s.riskSummary,
+              aiReport: s.aiReport
+            })));
+          }
+        } catch (err) {
+          console.error('[Dashboard] Failed to refresh shipments list after sync:', err);
+        }
+      } else if (updatedQueue.length > 0) {
+        toast.error("Cloud synchronization offline. Shipment saved locally for auto-sync.", {
+          id: 'sync-offline-toast'
+        });
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error during pending shipments sync:', err);
+    } finally {
+      syncPendingShipments.running = false;
+    }
+  }, []);
+
+  // Sync queue on load, network connection restored, or periodically
+  useEffect(() => {
+    syncPendingShipments();
+
+    const handleOnline = () => {
+      console.log('[Dashboard] Network connection restored. Syncing offline queue...');
+      syncPendingShipments();
+    };
+    window.addEventListener('online', handleOnline);
+
+    const syncInterval = setInterval(() => {
+      syncPendingShipments();
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(syncInterval);
+    };
+  }, [syncPendingShipments]);
+
+  // Automatically save new successful routes via local queue
   useEffect(() => {
     if (selectedSource && selectedDest && activeRoute && intel && !intel.loading && !replayingShipment && !originalAnalysis) {
       const key = `${selectedSource.lat}-${selectedSource.lon || selectedSource.lng}-${selectedDest.lat}-${selectedDest.lon || selectedDest.lng}-${freightMode}`;
       if (savedShipmentKeyRef.current !== key) {
         savedShipmentKeyRef.current = key;
         
-        const saveShipment = async () => {
+        const queueAndSaveShipment = async () => {
           try {
-            console.log('[Dashboard] Automatically saving shipment to MongoDB...');
+            console.log('[Dashboard] Automatically queuing shipment save...');
             const m = freightMode === 'ship' ? 'sea' : freightMode === 'truck' ? 'road' : 'air';
-            await axios.post('/api/ai/shipment', {
+            const payload = {
               origin: selectedSource.display_name,
               destination: selectedDest.display_name,
               mode: m,
@@ -481,40 +586,23 @@ const Dashboard = () => {
               riskSummary: intel.recommendedMode || 'low-risk',
               aiReport: intel.aiReport,
               newsAlerts: intel.events || null
-            });
-            
-            // Refresh saved routes list
-            const res = await axios.get('/api/ai/shipments');
-            if (res.data?.success) {
-              setSavedRoutes(res.data.shipments.map(s => ({
-                id: s.id,
-                origin: s.origin,
-                destination: s.destination,
-                mode: s.mode === 'road' ? 'truck' : s.mode === 'sea' ? 'ship' : 'air',
-                distance: s.distance,
-                eta: s.eta,
-                riskScore: s.riskScore,
-                safetyScore: s.safetyScore,
-                routeGeometry: s.routeGeometry,
-                timestamp: new Date(s.createdAt).getTime(),
-                severity: getRiskLevel(s.riskScore),
-                cargo: s.cargo,
-                priority: s.priority,
-                date: s.date,
-                time: s.time,
-                weatherSummary: s.weatherSummary,
-                riskSummary: s.riskSummary,
-                aiReport: s.aiReport
-              })));
-            }
+            };
+
+            const pendingQueue = JSON.parse(localStorage.getItem('rg_pending_shipments') || '[]');
+            const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const pendingItem = { tempId, payload, timestamp: Date.now(), attempts: 0 };
+            pendingQueue.push(pendingItem);
+            localStorage.setItem('rg_pending_shipments', JSON.stringify(pendingQueue));
+
+            await syncPendingShipments();
           } catch (err) {
-            console.warn('[Dashboard] Failed to save shipment to backend:', err.message);
+            console.warn('[Dashboard] Failed to queue shipment:', err.message);
           }
         };
-        saveShipment();
+        queueAndSaveShipment();
       }
     }
-  }, [selectedSource, selectedDest, freightMode, activeRoute, intel, replayingShipment, originalAnalysis]);
+  }, [selectedSource, selectedDest, freightMode, activeRoute, intel, replayingShipment, originalAnalysis, syncPendingShipments]);
 
   useEffect(() => {
     if (replayingShipment) {
@@ -841,7 +929,7 @@ const Dashboard = () => {
                   {intel?.loading ? (
                     <div className="flex items-center justify-center py-4 gap-2">
                       <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-cyan-400 animate-spin" />
-                      <span className="text-xs text-slate-400 font-bold">Waking Geo Risk Engine...</span>
+                      <span className="text-xs text-slate-400 font-bold">{intel.statusText || 'Waking Geo Risk Engine...'}</span>
                     </div>
                   ) : intel?.error ? (
                     <div className="p-3.5 rounded-xl border border-red-500/20 bg-red-500/5 text-xs text-red-300">
@@ -1055,7 +1143,7 @@ const Dashboard = () => {
                   {(intel?.loading && !parsedOriginalReport) ? (
                     <div className="flex items-center justify-center py-4 gap-2">
                       <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-cyan-400 animate-spin" />
-                      <span className="text-xs text-slate-400 font-bold">Generating AI Report...</span>
+                      <span className="text-xs text-slate-400 font-bold">{intel.statusText || 'Generating AI Report...'}</span>
                     </div>
                   ) : (intel?.error && !parsedOriginalReport) ? (
                     <div className="p-3 rounded-xl border border-red-500/20 bg-red-500/5 text-xs text-red-300">

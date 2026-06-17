@@ -20,10 +20,10 @@ export const fetchCsrfToken = async () => {
     console.warn('[AUTH] Failed to fetch CSRF token from bootstrap endpoint:', err.message);
   }
 };
-
 // Request interceptor to attach X-XSRF-TOKEN header on mutating requests
 axios.interceptors.request.use(
   (config) => {
+    config.withCredentials = true; // Always set credentials for CORS compatibility
     const getCookie = (name) => {
       const value = `; ${document.cookie}`;
       const parts = value.split(`; ${name}=`);

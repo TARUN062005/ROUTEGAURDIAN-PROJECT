@@ -23,10 +23,32 @@ const csrfProtection = (req, res, next) => {
     '/ai/warmup'
   ];
 
-  const path = req.path;
-  const originalPath = req.originalUrl.split('?')[0];
+  const cleanPath = (p) => {
+    if (!p) return '';
+    let cleaned = p.trim().toLowerCase().split('?')[0];
+    // Strip leading /api if present
+    if (cleaned.startsWith('/api')) {
+      cleaned = cleaned.substring(4);
+    }
+    // Strip trailing slash
+    if (cleaned.endsWith('/') && cleaned.length > 1) {
+      cleaned = cleaned.substring(0, cleaned.length - 1);
+    }
+    // Ensure leading slash
+    if (!cleaned.startsWith('/')) {
+      cleaned = '/' + cleaned;
+    }
+    return cleaned;
+  };
 
-  const isExempt = exemptPaths.some(p => path === p || originalPath === p || originalPath === `/api${p}`);
+  const reqPathClean = cleanPath(req.path);
+  const origPathClean = cleanPath(req.originalUrl);
+
+  const isExempt = exemptPaths.some(p => {
+    const cleanExempt = cleanPath(p);
+    return reqPathClean === cleanExempt || origPathClean === cleanExempt;
+  });
+
   if (isExempt) {
     return next();
   }
@@ -35,21 +57,18 @@ const csrfProtection = (req, res, next) => {
   // Support both standard XSRF and general CSRF custom header names
   const csrfHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'];
 
-  // Diagnostics for AI routes only
-  const isAiRoute = req.path.startsWith('/ai') || req.path.startsWith('/api/ai') || req.originalUrl.includes('/ai/');
-  if (isAiRoute) {
-    const cookieNames = req.cookies ? Object.keys(req.cookies) : [];
-    const userId = req.user ? req.user.id : 'N/A';
-    const match = (csrfCookie && csrfHeader && csrfCookie === csrfHeader) ? 'Match' : 'Mismatch';
-    const resultStatus = match === 'Match' ? 'Pass' : '403 Forbidden';
-    console.log(`[CSRF DIAGNOSTIC] Path: ${req.path}, OriginalUrl: ${req.originalUrl}, CookieKeys: ${JSON.stringify(cookieNames)}, CookieVal: ${csrfCookie ? 'Present' : 'Missing'}, HeaderVal: ${csrfHeader ? 'Present' : 'Missing'}, Status: ${match}, UserID: ${userId}, Result: ${resultStatus}`);
-  }
+  const match = (csrfCookie && csrfHeader && csrfCookie === csrfHeader);
 
-  if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
-    console.warn(`[SECURITY] CSRF Validation Failed. IP: ${req.ip || 'Unknown'}, Path: ${req.path}`);
+  // Print diagnostic log for all mutating requests
+  const cookieNames = req.cookies ? Object.keys(req.cookies) : [];
+  const userId = req.user ? req.user.id : 'N/A';
+  console.log(`[CSRF DIAGNOSTIC] Method: ${req.method}, Path: ${req.path}, OriginalUrl: ${req.originalUrl}, reqPathClean: ${reqPathClean}, origPathClean: ${origPathClean}, CookieKeys: ${JSON.stringify(cookieNames)}, CookieVal: ${csrfCookie ? 'Present' : 'Missing'}, HeaderVal: ${csrfHeader ? 'Present' : 'Missing'}, Match: ${match ? 'Pass' : 'Mismatch'}, UserID: ${userId}`);
+
+  if (!match) {
+    console.warn(`[SECURITY] CSRF Validation Failed. IP: ${req.ip || 'Unknown'}, Path: ${req.path}, OriginalUrl: ${req.originalUrl}, Cookie: ${csrfCookie ? 'Present' : 'Missing'}, Header: ${csrfHeader ? 'Present' : 'Missing'}`);
     return res.status(403).json({
       success: false,
-      message: 'CSRF validation failed'
+      message: 'CSRF Validation Failed'
     });
   }
 
@@ -62,11 +81,12 @@ const csrfProtection = (req, res, next) => {
 const setCsrfToken = (req, res, next) => {
   if (!req.cookies['XSRF-TOKEN']) {
     const token = crypto.randomBytes(24).toString('hex');
-    const host = req.headers.host || '';
-    const isProduction = process.env.NODE_ENV === 'production' || (!host.includes('localhost') && !host.includes('127.0.0.1'));
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https' || 
+                     (req.headers.host && !req.headers.host.includes('localhost') && !req.headers.host.includes('127.0.0.1'));
     res.cookie('XSRF-TOKEN', token, {
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
+      secure: isSecure,
+      sameSite: isSecure ? 'none' : 'lax',
+      httpOnly: false, // Must be accessible to client-side JS (important for cross-origin read)
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });

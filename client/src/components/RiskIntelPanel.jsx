@@ -121,6 +121,127 @@ export const RiskIntelPanel = ({
     { id: 'weather', label: `Weather${weatherBad.length > 0 ? ' ⚠' : ''}` },
   ];
 
+  if (intel.loading) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 290, damping: 30 }}
+            className="absolute right-0 top-0 bottom-0 z-[4010] flex flex-col overflow-hidden text-white"
+            style={{
+              width: 340,
+              background: 'var(--surface)',
+              borderLeft: '1px solid var(--border)',
+              boxShadow: '-8px 0 40px rgba(0,0,0,0.35)',
+              fontFamily: 'Inter, system-ui, sans-serif',
+            }}
+          >
+            {/* Header */}
+            <div
+              className="px-4 py-3 flex items-center justify-between flex-shrink-0"
+              style={{ background: '#0B1220', borderBottom: '1px solid var(--border)' }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--text-primary)' }}>
+                  Route Intelligence
+                </span>
+              </div>
+              <button onClick={onClose} className="p-1 transition-colors" style={{ color: 'var(--text-muted)' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Loading Content */}
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+              <div className="relative w-14 h-14 mb-6">
+                <div className="absolute inset-0 rounded-full border-[3px] border-slate-800" />
+                <div className="absolute inset-0 rounded-full border-[3px] border-t-cyan-500 animate-spin" />
+              </div>
+              <h3 className="text-sm font-black text-slate-100 tracking-wide uppercase mb-2">Analyzing Route Risks</h3>
+              <p className="text-[11px] text-cyan-400 font-bold px-3 py-2 bg-slate-900/50 rounded-xl border border-cyan-500/10 animate-pulse">
+                {intel.statusText || 'Waking Risk Intelligence Engine'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-4 leading-relaxed max-w-[200px]">
+                Configuring telemetry, matching corridor grids, and downloading localized feeds...
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  if (intel.error) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 290, damping: 30 }}
+            className="absolute right-0 top-0 bottom-0 z-[4010] flex flex-col overflow-hidden text-white"
+            style={{
+              width: 340,
+              background: 'var(--surface)',
+              borderLeft: '1px solid var(--border)',
+              boxShadow: '-8px 0 40px rgba(0,0,0,0.35)',
+              fontFamily: 'Inter, system-ui, sans-serif',
+            }}
+          >
+            {/* Header */}
+            <div
+              className="px-4 py-3 flex items-center justify-between flex-shrink-0"
+              style={{ background: '#0B1220', borderBottom: '1px solid var(--border)' }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--text-primary)' }}>
+                  Route Intelligence
+                </span>
+              </div>
+              <button onClick={onClose} className="p-1 transition-colors" style={{ color: 'var(--text-muted)' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Error Content */}
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
+                <AlertTriangle size={24} className="text-red-500" />
+              </div>
+              <h3 className="text-sm font-black text-red-400 tracking-wide uppercase mb-4">Risk Evaluation Offline</h3>
+              
+              <div className="space-y-2 w-full max-w-[240px]">
+                <div className="text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 bg-red-950/20 border border-red-900/20 text-red-400 rounded-lg">
+                  Risk Engine Response Missing
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 bg-red-950/20 border border-red-900/20 text-red-400 rounded-lg">
+                  Risk Mapping Failed
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 bg-red-950/20 border border-red-900/20 text-red-400 rounded-lg">
+                  Risk Analysis Unavailable
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-500 mt-6 leading-relaxed">
+                The geopolitical risk intelligence cluster did not respond within the maximum allocated retry frame. Developers should check the telemetry logs.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
       {isOpen && (
