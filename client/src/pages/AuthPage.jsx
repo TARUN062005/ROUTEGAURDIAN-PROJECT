@@ -71,10 +71,9 @@ const AuthPage = () => {
         {/* Glow border effect */}
         <div className="absolute -inset-[1px] bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-3xl blur-sm pointer-events-none -z-10" />
 
-        {/* Logo and header */}
         <div className="flex flex-col items-center text-center space-y-3">
-          <div className="rounded-2xl border border-cyan-500/30 p-3 bg-cyan-950/20 shadow-inner shadow-cyan-500/5">
-            <Shield size={32} className="text-cyan-400" />
+          <div className="w-16 h-16 rounded-2xl border border-cyan-500/30 overflow-hidden bg-cyan-950/20 shadow-inner shadow-cyan-500/5 flex items-center justify-center">
+            <img src="/LOGO.png" alt="RouteGuardian Logo" className="w-full h-full object-cover" />
           </div>
           <div className="space-y-1">
             <h1 className="text-2xl font-black tracking-tight text-white uppercase sm:text-3xl">

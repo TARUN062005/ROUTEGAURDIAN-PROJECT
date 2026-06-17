@@ -134,8 +134,8 @@ const LandingPage = () => {
           
           {/* Logo brand */}
           <button className="flex items-center gap-3 group text-left cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="rounded-xl border border-cyan-500/20 p-2 bg-cyan-950/20 group-hover:border-cyan-400 transition-all duration-300">
-              <Shield size={20} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+            <div className="w-8 h-8 rounded-xl border border-cyan-500/20 bg-cyan-950/20 overflow-hidden flex items-center justify-center group-hover:border-cyan-400 transition-all duration-300">
+              <img src="/LOGO.png" alt="RouteGuardian Logo" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 leading-none mb-1">RouteGuardian</p>

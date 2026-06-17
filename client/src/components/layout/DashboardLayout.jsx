@@ -258,9 +258,11 @@ const DashboardLayout = () => {
         >
           {/* Left: breadcrumb */}
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_12px_rgba(34,197,94,0.6)]" style={{ background: "#22C55E" }} />
+            <div className="w-6 h-6 rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center flex-shrink-0">
+              <img src="/LOGO.png" alt="RouteGuardian Logo" className="w-full h-full object-cover" />
+            </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#00C2FF] leading-none mb-1">
                 RouteGuardian
               </p>
               <p className="text-sm font-bold capitalize leading-none text-white">
