@@ -462,19 +462,3 @@ const LandingPage = () => {
 };
 
 export default LandingPage;
-
-      {/* 7. BRAND FOOTER */}
-      <footer className="border-t border-slate-900 bg-[#03060E] py-10 px-6 text-center text-slate-500 text-xs">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <Shield size={16} className="text-cyan-400" />
-            <span className="font-black uppercase tracking-wider text-slate-400">RouteGuardian</span>
-          </div>
-          <p className="font-medium">© {new Date().getFullYear()} RouteGuardian. Enterprise Route Risk Auditing Platform. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
-  );
-};
-
-export default LandingPage;
