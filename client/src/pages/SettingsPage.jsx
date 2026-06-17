@@ -26,6 +26,14 @@ const SettingsPage = () => {
   // Tab State
   const [activeSection, setActiveSection] = useState('appearance');
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') || params.get('section');
+    if (tab && ['appearance', 'profile', 'security'].includes(tab)) {
+      setActiveSection(tab);
+    }
+  }, []);
+
   // Profile Form States
   const [formData, setFormData] = useState({
     name:     user?.name     || '',

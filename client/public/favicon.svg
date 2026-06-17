@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00C2FF" />
+      <stop offset="100%" stop-color="#004C8C" />
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#38EF7D" />
+    </linearGradient>
+  </defs>
+  <!-- Shield shape -->
+  <path d="M16 2 L28 6 V16 C28 23 23 28 16 30 C9 28 4 23 4 16 V6 Z" fill="url(#shieldGrad)" />
+  <!-- Inner Shield outline -->
+  <path d="M16 4 L26 7.5 V15 C26 21 22 25.5 16 27.5 C10 25.5 6 21 6 15 V7.5 Z" fill="#081120" opacity="0.9" />
+  <!-- Route Line (glowing) -->
+  <path d="M9 18 C 11 12, 14 20, 17 13 C 19 9, 22 17, 23 11" fill="none" stroke="url(#lineGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Waypoints -->
+  <circle cx="9" cy="18" r="1.5" fill="#38EF7D" />
+  <circle cx="17" cy="13" r="1.5" fill="#00F0FF" />
+  <circle cx="23" cy="11" r="1.5" fill="#00C2FF" />
+</svg>
