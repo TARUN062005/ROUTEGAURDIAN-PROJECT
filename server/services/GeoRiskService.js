@@ -48,20 +48,22 @@ const COUNTRY_TO_CODE = {
   'oman': 'OM',
   'kuwait': 'KW',
   'bahrain': 'BH',
+  'new zealand': 'NZ',
+  'nigeria': 'NG',
 };
 
 // Helper to sanitize locations for Nominatim geocoding on GEO_RISK_ENGINE
 function sanitizeLocation(loc) {
   if (!loc) return '';
-  
+
   let s = loc;
-  
+
   // 1. Remove text inside parentheses (e.g. "Mumbai (Bombay) Port" -> "Mumbai Port")
   s = s.replace(/\s*\([^)]*\)\s*/g, ' ');
-  
+
   // 2. Remove IATA/ICAO codes (3-4 letter uppercase words) but exclude common country/region codes like USA, UAE, CAN, IND
   s = s.replace(/\b(?!USA|UAE|CAN|IND|SGP|HKG|GBR|DEU|FRA|JPN|CHN|KOR|AUS|NZL|BRA|MEX|ZAF|RUS)[A-Z]{3,4}\b/g, '');
-  
+
   // 3. Remove specific keywords
   const keywords = [
     'port', 'airport', 'terminal', 'harbor', 'harbour', 'dock', 'seaport',
@@ -70,16 +72,16 @@ function sanitizeLocation(loc) {
   keywords.forEach(kw => {
     s = s.replace(new RegExp(`\\b${kw}\\b`, 'gi'), '');
   });
-  
+
   // 4. Remove extra separators and dashes, replace with spaces
   s = s.replace(/[-_\\/|]+/g, ' ');
-  
+
   // 5. Split by comma, clean, and filter empty parts
   let parts = s.split(',').map(p => p.trim()).filter(Boolean);
-  
+
   // 6. Clean internal multiple spaces
   parts = parts.map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  
+
   // Deduplicate parts (case-insensitive)
   const uniqueParts = [];
   const seen = new Set();
@@ -90,13 +92,13 @@ function sanitizeLocation(loc) {
       uniqueParts.push(part);
     }
   }
-  
+
   // 7. Convert to City, Country (usually the last 2 parts of the cleaned array)
   let resultParts = uniqueParts;
   if (resultParts.length > 2) {
     resultParts = resultParts.slice(-2);
   }
-  
+
   // Convert country names to 2-letter ISO codes (Option A) to prevent geocoding 422 errors on Render ML geocoder
   if (resultParts.length > 1) {
     const lastIdx = resultParts.length - 1;
@@ -105,7 +107,7 @@ function sanitizeLocation(loc) {
       resultParts[lastIdx] = COUNTRY_TO_CODE[countryKey];
     }
   }
-  
+
   return resultParts.join(', ');
 }
 
@@ -113,7 +115,7 @@ class GeoRiskService {
   constructor() {
     this.baseUrl = process.env.GEO_RISK_ENGINE_URL || 'https://geo-risk-engine-ml-model.onrender.com';
     console.log(`[GeoRiskService] Initialized with base URL: ${this.baseUrl}`);
-    
+
     // Seed default highly realistic alerts to guarantee zero-latency initial responses
     this.seededAlerts = [
       {
@@ -187,16 +189,18 @@ class GeoRiskService {
     globalAlertsCache.set('global-aggregated-alerts', this.seededAlerts);
 
     // Warm up the cache and keep it fresh in the background
-    this.refreshLiveIncidentsInBackground().catch(err => {
-      console.warn('[GeoRiskService] Initial live incidents refresh failed:', err.message);
-    });
-
-    // Run the background update loop every 10 minutes to prevent the Render tier from sleeping
-    setInterval(() => {
+    if (process.env.SKIP_BG_REFRESH !== 'true') {
       this.refreshLiveIncidentsInBackground().catch(err => {
-        console.warn('[GeoRiskService] Periodic background refresh failed:', err.message);
+        console.warn('[GeoRiskService] Initial live incidents refresh failed:', err.message);
       });
-    }, 600000);
+
+      // Run the background update loop every 10 minutes to prevent the Render tier from sleeping
+      setInterval(() => {
+        this.refreshLiveIncidentsInBackground().catch(err => {
+          console.warn('[GeoRiskService] Periodic background refresh failed:', err.message);
+        });
+      }, 600000);
+    }
   }
 
   /**
@@ -233,7 +237,7 @@ class GeoRiskService {
           radius_km: radiusKm,
           min_confidence: minConfidence
         }, {
-          timeout: 15000 // 15 seconds timeout
+          timeout: 60000
         });
 
         if (response.data) {
@@ -249,7 +253,7 @@ class GeoRiskService {
         }
       } catch (err) {
         console.warn(`[GeoRiskService] Attempt ${attempt} failed: ${err.message}`);
-        
+
         // Handle 400 and 422 errors immediately without retrying since they are client input validation/geocoding errors
         if (err.response && [400, 422].includes(err.response.status)) {
           const detail = err.response.data?.detail || err.response.data?.error || 'Geocoding or validation failed on risk engine';
@@ -305,7 +309,7 @@ class GeoRiskService {
         for (const event of modeData.events) {
           const locStr = event.location ? `${event.location[0].toFixed(3)},${event.location[1].toFixed(3)}` : '0,0';
           const key = `${event.headline || ''}_${locStr}`;
-          
+
           if (!uniqueEventsMap.has(key)) {
             uniqueEventsMap.set(key, event);
           } else {

@@ -1858,6 +1858,8 @@ Generate a JSON object matching this schema (do not include markdown syntax, bac
       risk_level: severity,
       threatCategories,
       threat_categories: threatCategories,
+      affectedRegions: aiReport.affectedRegions || [],
+      affected_regions: aiReport.affectedRegions || [],
       analyzedAt: geoRiskResult.analyzed_at,
       analyzed_at: geoRiskResult.analyzed_at,
       aiReport,

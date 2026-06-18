@@ -1,0 +1,22 @@
+{
+  "https://www.ukmto.org/advisories": {
+    "imageUrl": null,
+    "timestamp": 1781755693717
+  },
+  "https://www.metoffice.gov.uk/weather/specialist-forecasts/coast-and-sea": {
+    "imageUrl": "https://www.metoffice.gov.uk/api/images/file/footstep-along-a-sunny-beach-1024x512.jpg?prefix=images&prefix=images",
+    "timestamp": 1781755694668
+  },
+  "https://www.icc-ccs.org/index.php/piracy-port-state-control-reporting": {
+    "imageUrl": null,
+    "timestamp": 1781755696172
+  },
+  "https://lethagencies.com/suez-canal-updates": {
+    "imageUrl": null,
+    "timestamp": 1781755697088
+  },
+  "https://www.pancanal.com/eng/op/index.html": {
+    "imageUrl": null,
+    "timestamp": 1781755698643
+  }
+}

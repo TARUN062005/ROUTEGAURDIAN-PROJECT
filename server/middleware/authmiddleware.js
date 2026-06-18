@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../utils/dbConnector');
+const NodeCache = require('node-cache');
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const userCache = new NodeCache({ stdTTL: 15 });
 
 function getTokenFromRequest(req) {
   const authHeader = req.headers['authorization'];
@@ -48,19 +50,27 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    // 2) Fetch user from DB (source of truth)
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        role: true,
-        email: true,
-        authProvider: true,
-        isActive: true,
-        emailVerified: true,
-        phoneVerified: true
+    // 2) Fetch user from DB (source of truth) with short-lived memory cache
+    const cacheKey = `user-${decoded.id}`;
+    let user = userCache.get(cacheKey);
+
+    if (!user) {
+      user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: {
+          id: true,
+          role: true,
+          email: true,
+          authProvider: true,
+          isActive: true,
+          emailVerified: true,
+          phoneVerified: true
+        }
+      });
+      if (user) {
+        userCache.set(cacheKey, user);
       }
-    });
+    }
 
     if (!user) {
       if (isAiRoute) console.log(`[AUTH DIAGNOSTIC] Path: ${req.path} failed: User not found in DB`);

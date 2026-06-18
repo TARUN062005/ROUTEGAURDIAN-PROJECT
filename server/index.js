@@ -32,7 +32,7 @@ const aiRoutes = require('./routes/ai.routes');
 
 const compression = require('compression');
 const app = express();
-app.use(compression());
+app.use(compression({ threshold: 0 }));
 
 // Set trust proxy to 1 so express-rate-limit can see the real client IP behind Render's load balancers.
 app.set('trust proxy', 1);
