@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getFallbackImage } from '../lib/imageUtils';
+import AlertBadge from '../components/AlertBadge';
 
 const getFavicon = (url) => {
   try {
@@ -1052,6 +1053,30 @@ const Dashboard = () => {
                       <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-cyan-400 animate-spin" />
                       <span className="text-xs text-slate-400 font-bold">{intel.statusText || 'Waking Geo Risk Engine...'}</span>
                     </div>
+                  ) : intel?.riskEngineStatus === 'TIMEOUT' || intel?._meta?.engineStatus === 'TIMEOUT' || (intel?.riskScore === null && intel?.safetyScore === null && intel?.riskLevel === 'UNAVAILABLE') ? (
+                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-2">
+                      <div className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        <span>Risk Analysis Temporarily Unavailable</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Engine Status: <span className="font-mono text-amber-300">{intel.riskEngineStatus || intel._meta?.engineStatus || 'TIMEOUT'}</span>.
+                        The risk engine timed out. Geopolitical risk score and safety score are unavailable. Route alerts found: <span className="text-white font-bold">{intel.alertsCount || 0}</span>.
+                      </p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                        The risk engine is currently processing. Scores will appear when available.
+                      </p>
+                    </div>
+                  ) : intel?.riskEngineStatus === 'PROCESSING' || intel?._meta?.engineStatus === 'PROCESSING' ? (
+                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex flex-col gap-1.5">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-cyan-400 animate-spin" />
+                        <span className="text-cyan-400 font-bold text-xs">Analyzing Route Intelligence...</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        This may take up to 30 seconds for long-haul routes.
+                      </p>
+                    </div>
                   ) : intel?.error ? (
                     <div className="p-3.5 rounded-xl border border-red-500/20 bg-red-500/5 space-y-2">
                       <p className="text-xs font-bold text-red-300">
@@ -1072,11 +1097,7 @@ const Dashboard = () => {
                           <span className="text-base font-black text-white">
                             {formatScore(intel.riskScore) != null
                               ? `${formatScore(intel.riskScore)} / 100`
-                              : intel._meta?.engineStatus === 'TIMEOUT'
-                              ? <span className="text-[11px] text-amber-400 font-bold">Timed Out</span>
-                              : intel._meta?.engineStatus === 'ERROR'
-                              ? <span className="text-[11px] text-red-400 font-bold">Unavailable</span>
-                              : 'Pending...'}
+                              : 'Unavailable'}
                           </span>
                         </div>
                         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col justify-center">
@@ -1084,11 +1105,7 @@ const Dashboard = () => {
                           <span className="text-base font-black text-white">
                             {formatScore(intel.safetyScore) != null
                               ? `${formatScore(intel.safetyScore)} / 100`
-                              : intel._meta?.engineStatus === 'TIMEOUT'
-                              ? <span className="text-[11px] text-amber-400 font-bold">Timed Out</span>
-                              : intel._meta?.engineStatus === 'ERROR'
-                              ? <span className="text-[11px] text-red-400 font-bold">Unavailable</span>
-                              : 'Pending...'}
+                              : 'Unavailable'}
                           </span>
                         </div>
                         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col justify-center col-span-2">
@@ -1500,10 +1517,13 @@ const Dashboard = () => {
                               />
                             </a>
                             <div className="flex justify-between items-center gap-2">
-                              <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"
-                                style={{ background: style.card, color: style.dot, borderColor: style.border, border: '1px solid' }}>
-                                {severity} · {news.label || 'threat'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"
+                                  style={{ background: style.card, color: style.dot, borderColor: style.border, border: '1px solid' }}>
+                                  {severity} · {news.label || 'threat'}
+                                </span>
+                                {news.sourceType && <AlertBadge sourceType={news.sourceType} />}
+                              </div>
                               <span className="text-[9px] text-slate-400 font-extrabold truncate">{news.publisher}</span>
                             </div>
                             <p className="text-[11px] font-semibold leading-snug text-white">
@@ -1516,6 +1536,7 @@ const Dashboard = () => {
                             <div className="flex justify-between items-center mt-1 text-[9px]">
                               <span className="text-slate-500 font-bold">
                                 {news.published_at ? new Date(news.published_at).toLocaleDateString() : ''}
+                                {news.distanceToRoute && ` · ${news.distanceToRoute}km from route`}
                               </span>
                               {news.source_url && (
                                 <a href={news.source_url} target="_blank" rel="noreferrer"

@@ -644,13 +644,46 @@ export const RouteMap = ({
 
               if (intelRes.data && intelRes.data.success) {
                 console.log('[FRONTEND RECEIVED RESPONSE]', JSON.stringify(intelRes.data, null, 2));
-                success = true;
-                setAllRoutes(curr => {
-                  const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: intelRes.data.intelligence } : cr);
-                  onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
-                  return updated;
-                });
-                break;
+                
+                let finalIntel = null;
+                if (intelRes.data.status === 'processing') {
+                   const jId = intelRes.data.jobId;
+                   let isDone = false;
+                   let pollAttempts = 0;
+                   const maxPollAttempts = 24;
+                   
+                   while (!isDone && pollAttempts < maxPollAttempts) {
+                     pollAttempts++;
+                     await new Promise(resolve => setTimeout(resolve, 5000));
+                     
+                     const statusRes = await axios.get(`${BASE_URL}/api/ai/risk/status/${jId}`);
+                     if (statusRes.data && statusRes.data.success) {
+                       if (statusRes.data.status === 'completed') {
+                         isDone = true;
+                         success = true;
+                         finalIntel = statusRes.data.result;
+                         break;
+                       } else if (statusRes.data.status === 'failed') {
+                         throw new Error(statusRes.data.error || 'Async risk job failed');
+                       }
+                     }
+                   }
+                   if (!success) {
+                     throw new Error('Risk assessment job polling timed out');
+                   }
+                } else {
+                   success = true;
+                   finalIntel = intelRes.data.intelligence || intelRes.data.result;
+                }
+
+                if (success && finalIntel) {
+                  setAllRoutes(curr => {
+                    const updated = curr.map(cr => cr.id === route.id ? { ...cr, intelligence: finalIntel } : cr);
+                    onRouteDataRef.current?.({ allRoutes: updated, activeRouteIndex: 0 });
+                    return updated;
+                  });
+                  break;
+                }
               }
             } catch (err) {
               lastError = err;

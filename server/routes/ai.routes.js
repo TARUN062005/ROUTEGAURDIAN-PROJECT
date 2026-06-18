@@ -14,6 +14,7 @@ router.get('/agent/state', aiAgentController.getAgentState);
 router.post('/agent/state', aiAgentController.saveAgentState);
 router.get('/directions', aiRouteController.getDirections);
 router.post('/risk/analyze', aiRouteController.analyzeRisk);
+router.get('/risk/status/:jobId', aiRouteController.getRiskJobStatus);
 router.post('/shipment', aiRouteController.createShipment);
 router.get('/shipments', aiRouteController.getShipments);
 router.delete('/shipments', aiRouteController.clearShipments);

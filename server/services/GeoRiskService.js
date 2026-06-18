@@ -527,6 +527,9 @@ class GeoRiskService {
 
     // Seed the cache immediately so requests are never blocked
     globalAlertsCache.set('global-aggregated-alerts', this.seededAlerts);
+    globalAlertsCache.set('global-alerts', this.seededAlerts);
+    this.alertCache = globalAlertsCache;
+    this.routeRiskCache = routeRiskCache;
 
     // Warm up the cache and keep it fresh in the background
     if (process.env.SKIP_BG_REFRESH !== 'true') {
@@ -676,6 +679,7 @@ class GeoRiskService {
     if (aggregatedEvents.length > 0) {
       console.log(`[GeoRiskService] Background refresh success. Aggregated ${aggregatedEvents.length} unique events.`);
       globalAlertsCache.set('global-aggregated-alerts', aggregatedEvents);
+      globalAlertsCache.set('global-alerts', aggregatedEvents);
     } else {
       console.log('[GeoRiskService] Background refresh returned 0 events. Retaining previous cache.');
     }
@@ -691,6 +695,63 @@ class GeoRiskService {
       return globalAlertsCache.get(cacheKey);
     }
     return this.seededAlerts;
+  }
+
+  async getAlertsAlongRoute(routeCoords) {
+    // Priority 1: Live ML incidents
+    try {
+      const liveAlerts = await this.getLiveIncidents();
+      const filtered = this.filterAlertsByRoute(liveAlerts, routeCoords);
+      if (filtered.length > 0) {
+        return filtered.map(a => ({ ...a, sourceType: 'LIVE' }));
+      }
+    } catch (e) {
+      console.log('[ALERTS] Live incidents unavailable, falling back to cache');
+    }
+    
+    // Priority 2: Cached incidents
+    const cachedAlerts = this.alertCache.get('global-alerts');
+    if (cachedAlerts && cachedAlerts.length > 0) {
+      const filtered = this.filterAlertsByRoute(cachedAlerts, routeCoords);
+      if (filtered.length > 0) {
+        return filtered.map(a => ({ ...a, sourceType: 'CACHED' }));
+      }
+    }
+    
+    // Priority 3: Seeded alerts (always available)
+    const seededAlerts = this.seededAlerts || [];
+    const filtered = this.filterAlertsByRoute(seededAlerts, routeCoords);
+    return filtered.map(a => ({ ...a, sourceType: 'SEEDED' }));
+  }
+  
+  filterAlertsByRoute(alerts, routeCoords, radiusKm = 300) {
+    if (!routeCoords || routeCoords.length === 0) return [];
+    
+    const matched = [];
+    for (const alert of alerts) {
+      const alertCoords = alert.location || alert.coordinates;
+      if (!alertCoords) continue;
+      
+      for (const point of routeCoords) {
+        const distance = this.calculateDistance(
+          point[0], point[1],
+          alertCoords[0], alertCoords[1]
+        );
+        if (distance <= radiusKm) {
+          const cloned = { ...alert, distanceToRoute: Math.round(distance) };
+          matched.push(cloned);
+          break;
+        }
+      }
+    }
+    return matched;
+  }
+
+  calculateDistance(lon1, lat1, lat2, lon2) {
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 }
 
