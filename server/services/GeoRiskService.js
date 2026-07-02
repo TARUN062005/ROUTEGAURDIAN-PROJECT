@@ -557,12 +557,12 @@ class GeoRiskService {
     const sanitizedOrigin = sanitizeLocation(origin);
     const sanitizedDest   = sanitizeLocation(destination);
 
-    // Phase 3: Log single-mode analysis intent
     const engineMode = mode ? ({ ship: 'sea', sea: 'sea', air: 'air', truck: 'road', road: 'road' }[mode] || mode) : 'all';
-    const modeReduction = mode ? '67% (3 modes → 1 mode)' : 'none (all modes)';
-    console.log(`[MODE ANALYSIS]\nrequested=${mode || 'all'}\nanalyzed=${engineMode}\nmode_reduction=${modeReduction}`);
+    const useSingleMode = engineMode !== 'all';
+    const modeReduction = useSingleMode ? '67% (3 modes → 1 mode)' : 'none (all modes)';
+    console.log(`[MODE ANALYSIS]\nrequested=${mode || 'all'}\nanalyzed=${engineMode}\nmode_reduction=${modeReduction}\nendpoint=${useSingleMode ? 'v5/single' : 'v5'}`);
 
-    // Phase 4: Mode-scoped cache key
+    // Mode-scoped cache key
     const cacheKey = `risk:${sanitizedOrigin}:${sanitizedDest}:${engineMode}`;
     const cacheHit = routeRiskCache.has(cacheKey);
     console.log(`[CACHE CHECK] ${cacheKey} → ${cacheHit ? 'HIT' : 'MISS'}`);
@@ -572,41 +572,54 @@ class GeoRiskService {
       return routeRiskCache.get(cacheKey);
     }
 
-    // Phase 6: Request log (called from analyzeRisk in controller, but also log here)
-    console.log(`[GEO_RISK REQUEST]\norigin=${sanitizedOrigin}\ndestination=${sanitizedDest}\nmode=${engineMode}\npayload=${JSON.stringify({
+    // Single-mode: fewer retries, shorter timeout (fits Render 30s limit)
+    // Multi-mode: more retries, longer timeout (route comparison workflow)
+    const retries = useSingleMode ? 3 : 5;
+    const requestTimeout = useSingleMode ? 30000 : 60000;
+    let delay = 3000;
+
+    // Choose endpoint
+    const endpoint = useSingleMode
+      ? `${this.baseUrl}/api/legacy/analyze/v5/single`
+      : `${this.baseUrl}/api/legacy/analyze/v5`;
+
+    const payload = {
       origin: sanitizedOrigin,
       destination: sanitizedDest,
       radius_km: radiusKm,
       min_confidence: minConfidence,
-    })}`);
+    };
+    if (useSingleMode) {
+      payload.mode = engineMode;
+    }
 
-    const retries = 5;
-    let delay = 3000; // 3 seconds initial delay
+    const requestStart = Date.now();
+    console.log(`[ML REQUEST]\nurl=${endpoint}\nmode=${engineMode}\norigin=${sanitizedOrigin}\ndestination=${sanitizedDest}`);
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        console.log(`[GeoRiskService] Posting to v5 API (Attempt ${attempt}/${retries}): ${sanitizedOrigin} → ${sanitizedDest}`);
-        const response = await axios.post(`${this.baseUrl}/api/legacy/analyze/v5`, {
-          origin: sanitizedOrigin,
-          destination: sanitizedDest,
-          radius_km: radiusKm,
-          min_confidence: minConfidence,
-        }, {
-          timeout: 60000,
+        console.log(`[GeoRiskService] Posting to ${useSingleMode ? 'v5/single' : 'v5'} API (Attempt ${attempt}/${retries}): ${sanitizedOrigin} → ${sanitizedDest} [${engineMode}]`);
+        const response = await axios.post(endpoint, payload, {
+          timeout: requestTimeout,
         });
 
         if (response.data) {
-          console.log('[DIAGNOSTIC - GEO_RISK_ENGINE RAW PAYLOAD]', JSON.stringify(response.data, null, 2));
+          const mlDuration = Date.now() - requestStart;
           const recMode = response.data.recommended_mode;
-          const recModeData = response.data.modes?.[recMode] || {};
+          const recModeData = response.data.modes?.[recMode] || response.data.modes?.[engineMode] || {};
+          const timings = response.data.timings || {};
 
-          console.log(`[GEO_RISK RESPONSE]\nrisk_score=${recModeData.risk_score ?? 'N/A'}\nsafety_score=${recModeData.safety_score ?? 'N/A'}\nrecommended_mode=${recMode}\nalerts=${recModeData.alerts ?? 0}`);
+          console.log(`[ML RESPONSE]\nstatus=200\nduration=${mlDuration}ms\nrisk_score=${recModeData.risk_score ?? 'N/A'}\nsafety_score=${recModeData.safety_score ?? 'N/A'}\nrecommended_mode=${recMode}\nalerts=${recModeData.alerts ?? 0}`);
+          if (timings.total_ms) {
+            console.log(`[ML DURATION]\ngeocoding=${timings.geocoding_ms || 0}ms\nrouting=${timings.route_generation_ms || 0}ms\ndbQuery=${timings.db_query_ms || 0}ms\nzones=${timings.zone_intersection_ms || 0}ms\ntotal=${timings.total_ms}ms`);
+          }
 
           routeRiskCache.set(cacheKey, response.data);
           return response.data;
         }
       } catch (err) {
-        console.warn(`[GeoRiskService] Attempt ${attempt} failed: ${err.message}`);
+        const mlDuration = Date.now() - requestStart;
+        console.warn(`[GeoRiskService] Attempt ${attempt} failed (${mlDuration}ms): ${err.message}`);
 
         // Handle 400 and 422 errors immediately (input/geocoding errors)
         if (err.response && [400, 422].includes(err.response.status)) {
@@ -617,11 +630,11 @@ class GeoRiskService {
 
         const isRetryable = err.code === 'ECONNABORTED' || !err.response || [429, 502, 503, 504].includes(err.response.status);
         if (isRetryable && attempt < retries) {
-          console.log(`[GeoRiskService] Service might be waking up. Waiting ${delay}ms before retry ${attempt + 1}...`);
+          console.log(`[ML REQUEST RETRY]\nattempt=${attempt + 1}/${retries}\ndelay=${delay}ms\nreason=${err.code || err.response?.status || 'network_error'}`);
           await new Promise(resolve => setTimeout(resolve, delay));
           delay += 2000;
         } else {
-          console.error(`[GeoRiskService] Permanent failure querying v5: ${err.message}`);
+          console.error(`[GeoRiskService] Permanent failure querying ${useSingleMode ? 'v5/single' : 'v5'}: ${err.message}`);
           throw err;
         }
       }

@@ -10,7 +10,7 @@ import {
   ArrowRight, Activity, Loader2
 } from 'lucide-react';
 
-const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName, isDeleting }) => {
   if (!isOpen) return null;
   return (
     <AnimatePresence>
@@ -20,7 +20,7 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.6 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={isDeleting ? undefined : onClose}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm"
         />
         {/* Card */}
@@ -45,15 +45,18 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
           <div className="flex items-center justify-end gap-2.5">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-white/5 border border-slate-800"
+              disabled={isDeleting}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-white/5 border border-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               onClick={onConfirm}
-              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all bg-red-600 hover:bg-red-500 text-white"
+              disabled={isDeleting}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 disabled:cursor-not-allowed min-w-[80px]"
             >
-              Delete
+              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
+              {isDeleting ? 'Deleting' : 'Delete'}
             </button>
           </div>
         </motion.div>
@@ -117,9 +120,11 @@ const ShipmentsPage = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [shipmentToDelete, setShipmentToDelete] = useState(null);
   const [loadingRouteId, setLoadingRouteId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteShipment = useCallback(async () => {
-    if (!shipmentToDelete) return;
+    if (!shipmentToDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
       const res = await axios.delete(`/api/ai/shipment/${shipmentToDelete.id}`);
       if (res.data?.success) {
@@ -136,8 +141,10 @@ const ShipmentsPage = () => {
     } catch (err) {
       console.error('[ShipmentsPage] Error deleting shipment:', err.message);
       toast.error("Failed to delete shipment");
+    } finally {
+      setIsDeleting(false);
     }
-  }, [shipmentToDelete, selected]);
+  }, [shipmentToDelete, selected, isDeleting]);
 
   const fetchShipments = useCallback(async () => {
     setLoading(true);
@@ -538,6 +545,7 @@ const ShipmentsPage = () => {
         onClose={() => { setDeleteModalOpen(false); setShipmentToDelete(null); }}
         onConfirm={handleDeleteShipment}
         itemName={`${shipmentToDelete?.origin?.split(',')[0] || 'Unknown'} to ${shipmentToDelete?.destination?.split(',')[0] || 'Unknown'}`}
+        isDeleting={isDeleting}
       />
     </div>
   );

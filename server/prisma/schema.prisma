@@ -531,4 +531,20 @@ model ChatState {
   updatedAt       DateTime @updatedAt
 }
 
+model RiskJob {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  jobId       String   @unique
+  status      String   @default("processing")
+  origin      String
+  destination String
+  mode        String?
+  distance    Float?
+  progress    Json?
+  result      Json?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  @@index([status])
+  @@index([createdAt])
+}
